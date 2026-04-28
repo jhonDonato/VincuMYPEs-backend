@@ -1,4 +1,8 @@
 package com.mypelink.backend.shared.domain.enums;
 
-public class TipoNotificacion {
+public enum TipoNotificacion {
+    SISTEMA, POSTULACION, PROYECTO, MENSAJE, OTRO
 }
+
+
+

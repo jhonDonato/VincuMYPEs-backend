@@ -1,4 +1,6 @@
 package com.mypelink.backend.shared.domain.enums;
 
-public class EstadoPostulacion {
+public enum EstadoPostulacion {
+    PENDIENTE, ACEPTADO, RECHAZADO, RETIRADO
 }
+

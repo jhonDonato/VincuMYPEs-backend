@@ -1,4 +1,7 @@
 package com.mypelink.backend.shared.domain.enums;
 
-public class EstadoEntregable {
+public enum EstadoEntregable {
+    PENDIENTE,
+    EN_REVISION,
+    APROBADO
 }

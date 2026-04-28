@@ -1,4 +1,5 @@
 package com.mypelink.backend.shared.domain.enums;
 
-public class AccionAuditoria {
+public enum AccionAuditoria {
+    CREATE, UPDATE, DELETE, LOGIN, LOGOUT, OTRO
 }
