@@ -2,9 +2,6 @@ package com.mypelink.backend.auditoria.domain.model;
 
 import com.mypelink.backend.usuarios.domain.model.Usuario;
 import com.mypelink.backend.shared.domain.enums.AccionAuditoria;
-import com.fasterxml.jackson.databind.JsonNode;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
@@ -39,13 +36,11 @@ public class LogAuditoria {
     @Column(columnDefinition = "TEXT")
     private String descripcion;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "datos_antes", columnDefinition = "jsonb")
-    private JsonNode datosAntes;
+    @Column(name = "datos_antes", columnDefinition = "TEXT")
+    private String datosAntes;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "datos_despues", columnDefinition = "jsonb")
-    private JsonNode datosDespues;
+    @Column(name = "datos_despues", columnDefinition = "TEXT")
+    private String datosDespues;
 
     @Column(name = "ip_origen", length = 45)
     private String ipOrigen;
