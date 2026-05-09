@@ -43,6 +43,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/proyectos/**").permitAll()
+                        .requestMatchers("/api/estudiantes/**").authenticated()  // ← agrega esta
+                        .requestMatchers("/api/usuarios/**").authenticated()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session ->
@@ -62,17 +64,13 @@ public class SecurityConfig {
         // Permite estos métodos HTTP
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
 
-        // Permite estos headers
         configuration.setAllowedHeaders(List.of("*"));
 
-        // Permite enviar cookies y Authorization header
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
 
-        // 👇 2. Quité el casteo (CorsConfigurationSource) porque no es necesario,
-        // UrlBasedCorsConfigurationSource ya implementa esa interfaz de forma nativa.
         return source;
     }
 

@@ -69,6 +69,13 @@ public class ProyectoController {
         return ResponseEntity.ok(proyectoService.listarPostulaciones(id, userDetails.getUsername()));
     }
 
+    @GetMapping("/mis-postulaciones")
+    @PreAuthorize("hasRole('ESTUDIANTE')")
+    public ResponseEntity<List<PostulacionResponse>> misPostulaciones(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(proyectoService.misPostulaciones(userDetails.getUsername()));
+    }
+
     @PatchMapping("/{id}/postulaciones/{postulacionId}/estado")
     @PreAuthorize("hasRole('MYPE')")
     public ResponseEntity<PostulacionResponse> cambiarEstadoPostulacion(

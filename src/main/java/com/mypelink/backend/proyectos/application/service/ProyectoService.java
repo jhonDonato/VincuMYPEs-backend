@@ -190,4 +190,16 @@ public class ProyectoService {
         postulacion.setFechaRespuesta(java.time.LocalDateTime.now());
         return toPostulacionResponse(postulacionRepository.save(postulacion));
     }
+
+    public List<PostulacionResponse> misPostulaciones(String emailEstudiante) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil de estudiante no encontrado"));
+
+        return postulacionRepository.findByEstudianteIdWithDetails(estudiante.getId())
+                .stream()
+                .map(this::toPostulacionResponse)
+                .toList();
+    }
 }

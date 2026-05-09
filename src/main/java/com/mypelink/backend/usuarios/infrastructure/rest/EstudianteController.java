@@ -2,9 +2,6 @@ package com.mypelink.backend.usuarios.infrastructure.rest;
 
 import com.mypelink.backend.proyectos.application.dto.PostulacionResponse;
 import com.mypelink.backend.proyectos.application.service.ProyectoService;
-import com.mypelink.backend.usuarios.application.dto.UsuarioResponse;
-import com.mypelink.backend.usuarios.domain.repository.UsuarioRepository;
-import com.mypelink.backend.shared.infrastructure.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -17,27 +14,11 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/usuarios")
+@RequestMapping("/api/estudiantes")
 @RequiredArgsConstructor
-public class UsuarioController {
+public class EstudianteController {
 
-    private final UsuarioRepository usuarioRepository;
     private final ProyectoService proyectoService;
-
-
-    @GetMapping("/me")
-    public ResponseEntity<UsuarioResponse> me(@AuthenticationPrincipal UserDetails userDetails) {
-        return usuarioRepository.findByEmailWithRole(userDetails.getUsername())
-                .map(u -> ResponseEntity.ok(new UsuarioResponse(
-                        u.getId(),
-                        u.getNombre(),
-                        u.getEmail(),
-                        u.getTelefono(),
-                        u.getFotoPerfil(),
-                        u.getRol().getNombre()
-                )))
-                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
-    }
 
     @GetMapping("/me/postulaciones")
     @PreAuthorize("hasRole('ESTUDIANTE')")
