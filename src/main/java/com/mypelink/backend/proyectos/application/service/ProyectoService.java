@@ -15,8 +15,11 @@ import com.mypelink.backend.usuarios.domain.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -116,5 +119,75 @@ public class ProyectoService {
                 p.getMensajePostulacion(),
                 p.getFechaPostulacion()
         );
+    }
+
+    @Transactional
+    public ProyectoResponse publicar(Long proyectoId, String emailMype) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        if (!proyecto.getMype().getId().equals(mype.getId())) {
+            throw new BusinessException("No tienes permiso para publicar este proyecto", HttpStatus.FORBIDDEN);
+        }
+        if (proyecto.getEstado() != WorkflowEstado.BORRADOR) {
+            throw new BusinessException("Solo los proyectos en BORRADOR pueden publicarse");
+        }
+
+        proyecto.setEstado(WorkflowEstado.PENDIENTE);
+        return toResponse(proyectoRepository.save(proyecto));
+    }
+
+    public List<PostulacionResponse> listarPostulaciones(Long proyectoId, String emailMype) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        if (!proyecto.getMype().getId().equals(mype.getId())) {
+            throw new BusinessException("No tienes permiso para ver estas postulaciones", HttpStatus.FORBIDDEN);
+        }
+
+        return postulacionRepository.findByProyectoIdWithDetails(proyectoId)
+                .stream()
+                .map(this::toPostulacionResponse)
+                .toList();
+    }
+
+    @Transactional
+    public PostulacionResponse cambiarEstadoPostulacion(Long proyectoId, Long postulacionId,
+                                                        CambiarEstadoPostulacionRequest request, String emailMype) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        if (!proyecto.getMype().getId().equals(mype.getId())) {
+            throw new BusinessException("No tienes permiso para gestionar estas postulaciones", HttpStatus.FORBIDDEN);
+        }
+
+        var postulacion = postulacionRepository.findById(postulacionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Postulacion", postulacionId));
+
+        if (request.estado() == EstadoPostulacion.ACEPTADO) {
+            long aceptados = postulacionRepository.findByProyectoId(proyectoId)
+                    .stream()
+                    .filter(p -> p.getEstado() == EstadoPostulacion.ACEPTADO)
+                    .count();
+            if (aceptados >= proyecto.getCupos()) {
+                throw new BusinessException("No hay cupos disponibles en este proyecto");
+            }
+        }
+
+        postulacion.setEstado(request.estado());
+        postulacion.setFechaRespuesta(java.time.LocalDateTime.now());
+        return toPostulacionResponse(postulacionRepository.save(postulacion));
     }
 }

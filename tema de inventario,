@@ -1,0 +1,10 @@
+[33mb0dcf9f[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Cors para el front
+[33m3fd2bdf[m[33m ([m[1;31morigin/develop[m[33m, [m[1;32mdevelop[m[33m)[m feat: Sprint 1 — auth JWT + proyectos + postulaciones
+[33ma8855eb[m usuarios completo
+[33mac48b06[m shared completo
+[33m52d284a[m chore: migrate from PostgreSQL to MySQL for local development
+[33mb1a28dd[m chore: add application.properties.example for team setup
+[33mba34489[m chore: remove application.properties from tracking, use env variables
+[33mc2c367f[m[33m ([m[1;31morigin/feature/test-endpoint[m[33m)[m Carpetas todas creadas
+[33m7073803[m feat: scaffold DDD con bounded contexts usuarios/proyectos/certificaciones
+[33m54ae7bf[m feat: change server port to 8081

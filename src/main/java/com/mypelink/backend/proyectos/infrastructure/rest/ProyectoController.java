@@ -14,6 +14,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/proyectos")
 @RequiredArgsConstructor
@@ -49,5 +51,32 @@ public class ProyectoController {
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(proyectoService.postular(id, request, userDetails.getUsername()));
+    }
+
+    @PatchMapping("/{id}/publicar")
+    @PreAuthorize("hasRole('MYPE')")
+    public ResponseEntity<ProyectoResponse> publicar(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(proyectoService.publicar(id, userDetails.getUsername()));
+    }
+
+    @GetMapping("/{id}/postulaciones")
+    @PreAuthorize("hasRole('MYPE')")
+    public ResponseEntity<List<PostulacionResponse>> listarPostulaciones(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(proyectoService.listarPostulaciones(id, userDetails.getUsername()));
+    }
+
+    @PatchMapping("/{id}/postulaciones/{postulacionId}/estado")
+    @PreAuthorize("hasRole('MYPE')")
+    public ResponseEntity<PostulacionResponse> cambiarEstadoPostulacion(
+            @PathVariable Long id,
+            @PathVariable Long postulacionId,
+            @Valid @RequestBody CambiarEstadoPostulacionRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(proyectoService.cambiarEstadoPostulacion(
+                id, postulacionId, request, userDetails.getUsername()));
     }
 }

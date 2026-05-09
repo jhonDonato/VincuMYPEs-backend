@@ -19,4 +19,11 @@ public interface PostulacionRepository extends JpaRepository<Postulacion, Long> 
     List<Postulacion> findByProyectoId(Long proyectoId);
 
     Optional<Postulacion> findByProyectoIdAndEstudianteId(Long proyectoId, Long estudianteId);
+
+    @Query("SELECT p FROM Postulacion p " +
+            "JOIN FETCH p.proyecto " +
+            "JOIN FETCH p.estudiante e " +
+            "JOIN FETCH e.usuario " +
+            "WHERE p.proyecto.id = :proyectoId")
+    List<Postulacion> findByProyectoIdWithDetails(@Param("proyectoId") Long proyectoId);
 }
