@@ -29,6 +29,13 @@ public class ProyectoController {
         return ResponseEntity.ok(proyectoService.listarPublicos(pageable));
     }
 
+    @GetMapping("/mis-proyectos")
+    @PreAuthorize("hasRole('MYPE')")
+    public ResponseEntity<List<ProyectoResponse>> misProyectos(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(proyectoService.listarPorMype(userDetails.getUsername()));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ProyectoResponse> obtener(@PathVariable Long id) {
         return ResponseEntity.ok(proyectoService.obtenerPorId(id));

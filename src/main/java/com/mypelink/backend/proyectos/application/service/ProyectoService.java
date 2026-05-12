@@ -31,9 +31,32 @@ public class ProyectoService {
     private final EstudianteRepository estudianteRepository;
     private final UsuarioRepository usuarioRepository;
 
+    @Transactional(readOnly = true)
+    public List<ProyectoResponse> listarPorMype(String emailMype) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+
+        return proyectoRepository.findByMypeIdConMype(mype.getId())
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public Page<ProyectoResponse> listarPublicos(Pageable pageable) {
-        return proyectoRepository.findByEstadoAndActivoTrue(WorkflowEstado.PENDIENTE, pageable)
-                .map(this::toResponse);
+        List<ProyectoResponse> lista = proyectoRepository
+                .findPublicosConMype(WorkflowEstado.PENDIENTE)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), lista.size());
+        List<ProyectoResponse> page = lista.subList(start, end);
+
+        return new org.springframework.data.domain.PageImpl<>(page, pageable, lista.size());
     }
 
     public ProyectoResponse obtenerPorId(Long id) {

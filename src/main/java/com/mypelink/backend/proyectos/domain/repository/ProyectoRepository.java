@@ -12,7 +12,14 @@ import java.util.List;
 
 public interface ProyectoRepository extends JpaRepository<Proyecto, Long> {
 
-    Page<Proyecto> findByEstadoAndActivoTrue(WorkflowEstado estado, Pageable pageable);
+    @Query("SELECT p FROM Proyecto p JOIN FETCH p.mype m WHERE p.mype.id = :mypeId AND p.activo = true ORDER BY p.fechaCreacion DESC")
+    List<Proyecto> findByMypeIdConMype(@Param("mypeId") Long mypeId);
+
+    @Query("SELECT p FROM Proyecto p JOIN FETCH p.mype m WHERE p.estado = :estado AND p.activo = true")
+    List<Proyecto> findPublicosConMype(@Param("estado") WorkflowEstado estado);
+
+    @Query(value = "SELECT COUNT(p) FROM Proyecto p WHERE p.estado = :estado AND p.activo = true")
+    long countByEstadoAndActivoTrue(@Param("estado") WorkflowEstado estado);
 
     @Query("SELECT p FROM Proyecto p WHERE p.mype.id = :mypeId AND p.activo = true")
     List<Proyecto> findByMypeId(@Param("mypeId") Long mypeId);
