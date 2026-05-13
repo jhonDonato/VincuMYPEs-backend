@@ -43,6 +43,7 @@ public class EstudianteService {
         if (request.linkedinUrl() != null) estudiante.setLinkedinUrl(request.linkedinUrl());
         if (request.carrera() != null) estudiante.setCarrera(request.carrera());
         if (request.universidad() != null) estudiante.setUniversidad(request.universidad());
+        if (request.telefono() != null) usuario.setTelefono(request.telefono());
 
         estudianteRepository.save(estudiante);
 
