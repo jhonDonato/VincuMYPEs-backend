@@ -22,7 +22,7 @@ public class CertificadoController {
     private final CertificadoService certificadoService;
 
     @PostMapping
-    @PreAuthorize("hasRole('MYPE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
     public ResponseEntity<CertificadoResponse> emitir(
             @Valid @RequestBody EmitirCertificadoRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
@@ -31,14 +31,14 @@ public class CertificadoController {
     }
 
     @GetMapping("/mis-certificados")
-    @PreAuthorize("hasRole('ESTUDIANTE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE', 'ESTUDIANTE')")
     public ResponseEntity<List<CertificadoResponse>> misCertificados(
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(certificadoService.listarMisCertificados(userDetails.getUsername()));
     }
 
     @GetMapping("/emitidos")
-    @PreAuthorize("hasRole('MYPE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
     public ResponseEntity<List<CertificadoResponse>> emitidos(
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(certificadoService.listarCertificadosEmitidos(userDetails.getUsername()));

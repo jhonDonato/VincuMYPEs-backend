@@ -36,15 +36,19 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
-                // 👇 1. ESTA ES LA LÍNEA CLAVE QUE FALTABA 👇
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
 
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/proyectos/**").permitAll()
-                        .requestMatchers("/api/estudiantes/**").authenticated()  // ← agrega esta
+                        .requestMatchers(HttpMethod.GET, "/api/proyectos/{id}").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/proyectos").permitAll()
+                        .requestMatchers("/api/proyectos/**").authenticated()
+                        .requestMatchers("/api/estudiantes/**").authenticated()
                         .requestMatchers("/api/usuarios/**").authenticated()
+                        .requestMatchers("/api/certificados/**").authenticated()
+                        .requestMatchers("/api/notificaciones/**").authenticated()
+                        .requestMatchers("/api/entregables/**").authenticated()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session ->

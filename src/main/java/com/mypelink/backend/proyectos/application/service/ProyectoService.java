@@ -1,5 +1,7 @@
 package com.mypelink.backend.proyectos.application.service;
 
+import com.mypelink.backend.notificaciones.application.service.NotificacionService;
+import com.mypelink.backend.shared.domain.enums.TipoNotificacion;
 import com.mypelink.backend.proyectos.domain.model.Postulacion;
 import com.mypelink.backend.proyectos.domain.model.Proyecto;
 import com.mypelink.backend.proyectos.application.dto.*;
@@ -30,6 +32,7 @@ public class ProyectoService {
     private final MypeRepository mypeRepository;
     private final EstudianteRepository estudianteRepository;
     private final UsuarioRepository usuarioRepository;
+    private final NotificacionService notificacionService;
 
     @Transactional(readOnly = true)
     public List<ProyectoResponse> listarPorMype(String emailMype) {
@@ -116,6 +119,13 @@ public class ProyectoService {
                 .mensajePostulacion(request.mensajePostulacion())
                 .archivoAdjunto(request.archivoAdjunto())
                 .build());
+        notificacionService.crearNotificacion(
+                proyecto.getMype().getUsuario(),
+                "Nueva postulación recibida",
+                "El estudiante " + estudiante.getUsuario().getNombre() + " postuló a tu proyecto: " + proyecto.getTitulo(),
+                TipoNotificacion.POSTULACION,
+                "/dashboard/postulaciones/" + proyecto.getId()
+        );
 
         return toPostulacionResponse(postulacion);
     }
@@ -183,8 +193,8 @@ public class ProyectoService {
     }
 
     @Transactional
-    public PostulacionResponse cambiarEstadoPostulacion(Long proyectoId, Long postulacionId,
-                                                        CambiarEstadoPostulacionRequest request, String emailMype) {
+    public PostulacionResponse cambiarEstadoPostulacion(Long proyectoId, Long postulacionId, CambiarEstadoPostulacionRequest request, String emailMype) {
+
         var usuario = usuarioRepository.findByEmailWithRole(emailMype)
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
         var mype = mypeRepository.findByUsuarioId(usuario.getId())
@@ -211,7 +221,22 @@ public class ProyectoService {
 
         postulacion.setEstado(request.estado());
         postulacion.setFechaRespuesta(java.time.LocalDateTime.now());
-        return toPostulacionResponse(postulacionRepository.save(postulacion));
+
+        var saved = postulacionRepository.save(postulacion);
+
+        String mensajeNotif = request.estado() == EstadoPostulacion.ACEPTADO
+                ? "¡Felicitaciones! Tu postulación al proyecto \"" + proyecto.getTitulo() + "\" fue ACEPTADA."
+                : "Tu postulación al proyecto \"" + proyecto.getTitulo() + "\" fue rechazada.";
+
+        notificacionService.crearNotificacion(
+                postulacion.getEstudiante().getUsuario(),
+                "Respuesta a tu postulacion",
+                mensajeNotif,
+                TipoNotificacion.POSTULACION,
+                "/mis-postulaciones"
+        );
+
+        return toPostulacionResponse(saved);
     }
 
     public List<PostulacionResponse> misPostulaciones(String emailEstudiante) {

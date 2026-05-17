@@ -30,7 +30,7 @@ public class ProyectoController {
     }
 
     @GetMapping("/mis-proyectos")
-    @PreAuthorize("hasRole('MYPE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
     public ResponseEntity<List<ProyectoResponse>> misProyectos(
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(proyectoService.listarPorMype(userDetails.getUsername()));
@@ -42,7 +42,7 @@ public class ProyectoController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('MYPE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
     public ResponseEntity<ProyectoResponse> crear(
             @Valid @RequestBody CrearProyectoRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
@@ -51,7 +51,7 @@ public class ProyectoController {
     }
 
     @PostMapping("/{id}/postular")
-    @PreAuthorize("hasRole('ESTUDIANTE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE', 'ESTUDIANTE')")
     public ResponseEntity<PostulacionResponse> postular(
             @PathVariable Long id,
             @Valid @RequestBody PostulacionRequest request,
@@ -61,7 +61,7 @@ public class ProyectoController {
     }
 
     @PatchMapping("/{id}/publicar")
-    @PreAuthorize("hasRole('MYPE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
     public ResponseEntity<ProyectoResponse> publicar(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails userDetails) {
@@ -69,7 +69,7 @@ public class ProyectoController {
     }
 
     @GetMapping("/{id}/postulaciones")
-    @PreAuthorize("hasRole('MYPE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
     public ResponseEntity<List<PostulacionResponse>> listarPostulaciones(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails userDetails) {
@@ -77,14 +77,14 @@ public class ProyectoController {
     }
 
     @GetMapping("/mis-postulaciones")
-    @PreAuthorize("hasRole('ESTUDIANTE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE', 'ESTUDIANTE')")
     public ResponseEntity<List<PostulacionResponse>> misPostulaciones(
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(proyectoService.misPostulaciones(userDetails.getUsername()));
     }
 
     @PatchMapping("/{id}/postulaciones/{postulacionId}/estado")
-    @PreAuthorize("hasRole('MYPE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
     public ResponseEntity<PostulacionResponse> cambiarEstadoPostulacion(
             @PathVariable Long id,
             @PathVariable Long postulacionId,

@@ -24,14 +24,14 @@ public class EstudianteController {
     private final EstudianteService estudianteService;
 
     @GetMapping("/me")
-    @PreAuthorize("hasRole('ESTUDIANTE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE', 'ESTUDIANTE')")
     public ResponseEntity<EstudianteProfileResponse> obtenerPerfil(
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(estudianteService.getProfile(userDetails.getUsername()));
     }
 
     @PutMapping("/me")
-    @PreAuthorize("hasRole('ESTUDIANTE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE', 'ESTUDIANTE')")
     public ResponseEntity<EstudianteProfileResponse> actualizarPerfil(
             @Valid @RequestBody UpdateEstudianteRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
@@ -39,7 +39,7 @@ public class EstudianteController {
     }
 
     @GetMapping("/me/postulaciones")
-    @PreAuthorize("hasRole('ESTUDIANTE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE', 'ESTUDIANTE')")
     public ResponseEntity<List<PostulacionResponse>> misPostulaciones(
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(proyectoService.misPostulaciones(userDetails.getUsername()));
