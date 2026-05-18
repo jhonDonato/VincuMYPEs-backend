@@ -109,8 +109,11 @@ public class ProyectoService {
         if (postulacionRepository.existsByProyectoIdAndEstudianteId(proyectoId, estudiante.getId())) {
             throw new BusinessException("Ya postulaste a este proyecto");
         }
+
+        // ✨ SOLUCIÓN AL ERROR DE LAMBDA: Pasamos el ID directo
         long proyectosActivos = postulacionRepository.countByEstudianteIdAndEstado(
-                studentId -> estudiante.getId(), EstadoPostulacion.ACEPTADO);
+                estudiante.getId(), EstadoPostulacion.ACEPTADO);
+
         if (proyectosActivos >= 2) {
             throw new BusinessException("No puedes tener más de 2 proyectos activos simultáneamente");
         }
@@ -155,7 +158,6 @@ public class ProyectoService {
     private void validarPermisoGestionPostulaciones(Usuario usuarioLogueado, Proyecto proyecto) {
         boolean esAdmin = usuarioLogueado.getRol().getNombre().equals("ROLE_ADMIN");
 
-        // Verificamos si es la MYPE dueña y si tiene el privilegio activado
         boolean esDuenoMypeConPrivilegio = false;
         if (!esAdmin) {
             var mypeOpcional = mypeRepository.findByUsuarioId(usuarioLogueado.getId());
@@ -206,9 +208,9 @@ public class ProyectoService {
                 throw new BusinessException("No hay cupos disponibles en este proyecto");
             }
 
-            // ✨ CONFIGURACIÓN EXITOSA: Si este alumno ocupa el último cupo libre, cerramos vacantes
+            // ✨ SOLUCIÓN AL ENUM: Transicionamos al estado correcto "EN_DESARROLLO"
             if (aceptados + 1 == proyecto.getCupos()) {
-                proyecto.setEstado(WorkflowEstado.EN_EJECUCION);
+                proyecto.setEstado(WorkflowEstado.EN_DESARROLLO);
                 proyectoRepository.save(proyecto);
             }
         }
