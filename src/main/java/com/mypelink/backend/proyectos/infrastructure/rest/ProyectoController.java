@@ -11,7 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails; // ✨ Interfaz correcta
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import com.mypelink.backend.proyectos.application.dto.EditarProyectoRequest;
 
@@ -20,6 +20,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/proyectos")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('ROLE_MYPE')")
 public class ProyectoController {
 
     private final ProyectoService proyectoService;
@@ -29,6 +30,8 @@ public class ProyectoController {
             @PageableDefault(size = 10, sort = "fechaCreacion") Pageable pageable) {
         return ResponseEntity.ok(proyectoService.listarPublicos(pageable));
     }
+
+    // ✨ CORRECCIÓN: Hemos borrado los 3 métodos de Admin de este archivo porque ya están en AdminProyectoController
 
     @GetMapping("/mis-proyectos")
     @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
@@ -69,7 +72,6 @@ public class ProyectoController {
         return ResponseEntity.ok(proyectoService.publicar(id, userDetails.getUsername()));
     }
 
-    // ✨ ADMIN AÑADIDO: Para que la intranet de MYPElink pueda ver postulaciones
     @GetMapping("/{id}/postulaciones")
     @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE', 'ROLE_ADMIN', 'ADMIN')")
     public ResponseEntity<List<PostulacionResponse>> listarPostulaciones(
@@ -78,7 +80,6 @@ public class ProyectoController {
         return ResponseEntity.ok(proyectoService.listarPostulaciones(id, userDetails.getUsername()));
     }
 
-    // ✨ METODO CORREGIDO: Usando UserDetails y permisos listos
     @PatchMapping("/{id}/cerrar")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MYPE', 'MYPE', 'ADMIN')")
     public ResponseEntity<ProyectoResponse> cerrarProyecto(
@@ -114,7 +115,6 @@ public class ProyectoController {
         return ResponseEntity.ok(proyectoService.misPostulaciones(userDetails.getUsername()));
     }
 
-    // ✨ ADMIN AÑADIDO: Para que la intranet asigne a los estudiantes aceptados
     @PatchMapping("/{id}/postulaciones/{postulacionId}/estado")
     @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE', 'ROLE_ADMIN', 'ADMIN')")
     public ResponseEntity<PostulacionResponse> cambiarEstadoPostulacion(
