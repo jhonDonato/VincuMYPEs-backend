@@ -12,7 +12,7 @@ import java.util.List;
 
 public interface ProyectoRepository extends JpaRepository<Proyecto, Long> {
 
-    @Query("SELECT p FROM Proyecto p JOIN FETCH p.mype m WHERE p.mype.id = :mypeId AND p.activo = true ORDER BY p.fechaCreacion DESC")
+    @Query("SELECT p FROM Proyecto p JOIN FETCH p.mype m WHERE p.mype.id = :mypeId ORDER BY p.fechaCreacion DESC")
     List<Proyecto> findByMypeIdConMype(@Param("mypeId") Long mypeId);
 
     @Query("SELECT p FROM Proyecto p JOIN FETCH p.mype m WHERE p.estado = :estado AND p.activo = true")
@@ -21,9 +21,9 @@ public interface ProyectoRepository extends JpaRepository<Proyecto, Long> {
     @Query(value = "SELECT COUNT(p) FROM Proyecto p WHERE p.estado = :estado AND p.activo = true")
     long countByEstadoAndActivoTrue(@Param("estado") WorkflowEstado estado);
 
-    @Query("SELECT p FROM Proyecto p WHERE p.mype.id = :mypeId AND p.activo = true")
+    @Query("SELECT p FROM Proyecto p WHERE p.mype.id = :mypeId")
     List<Proyecto> findByMypeId(@Param("mypeId") Long mypeId);
 
-    @Query("SELECT p FROM Proyecto p JOIN FETCH p.mype m JOIN FETCH m.usuario WHERE p.id = :id AND p.activo = true")
+    @Query("SELECT p FROM Proyecto p JOIN FETCH p.mype m JOIN FETCH m.usuario WHERE p.id = :id")
     java.util.Optional<Proyecto> findByIdWithMype(@Param("id") Long id);
 }

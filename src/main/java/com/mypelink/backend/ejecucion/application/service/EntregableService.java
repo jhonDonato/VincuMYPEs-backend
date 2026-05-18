@@ -1,19 +1,17 @@
 package com.mypelink.backend.ejecucion.application.service;
 
-import com.mypelink.backend.ejecucion.application.dto.EntregableRequest;
 import com.mypelink.backend.ejecucion.application.dto.EntregableResponse;
 import com.mypelink.backend.ejecucion.application.dto.RevisarEntregableRequest;
 import com.mypelink.backend.ejecucion.domain.model.Entregable;
 import com.mypelink.backend.ejecucion.domain.repository.EntregableRepository;
 import com.mypelink.backend.notificaciones.application.service.NotificacionService;
-import com.mypelink.backend.proyectos.domain.model.Proyecto;
 import com.mypelink.backend.proyectos.domain.repository.PostulacionRepository;
 import com.mypelink.backend.proyectos.domain.repository.ProyectoRepository;
 import com.mypelink.backend.shared.domain.enums.EstadoPostulacion;
 import com.mypelink.backend.shared.domain.enums.TipoNotificacion;
+import com.mypelink.backend.shared.infrastructure.aws.S3Service;
 import com.mypelink.backend.shared.infrastructure.exception.BusinessException;
 import com.mypelink.backend.shared.infrastructure.exception.ResourceNotFoundException;
-import com.mypelink.backend.usuarios.domain.model.Estudiante;
 import com.mypelink.backend.usuarios.domain.repository.EstudianteRepository;
 import com.mypelink.backend.usuarios.domain.repository.MypeRepository;
 import com.mypelink.backend.usuarios.domain.repository.UsuarioRepository;
@@ -21,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -35,9 +34,10 @@ public class EntregableService {
     private final MypeRepository mypeRepository;
     private final UsuarioRepository usuarioRepository;
     private final NotificacionService notificacionService;
+    private final S3Service s3Service; // ✨ AÑADIDO
 
     @Transactional
-    public EntregableResponse subir(Long proyectoId, EntregableRequest request, String emailEstudiante) {
+    public EntregableResponse subir(Long proyectoId, String titulo, String descripcion, MultipartFile archivo, String emailEstudiante) {
         var usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
         var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
@@ -54,12 +54,14 @@ public class EntregableService {
             throw new BusinessException("Solo estudiantes aceptados pueden subir entregables");
         }
 
+        String archivoUrl = s3Service.subirEntregablePdf(archivo);
+
         var entregable = entregableRepository.save(Entregable.builder()
                 .proyecto(proyecto)
                 .estudiante(estudiante)
-                .titulo(request.titulo())
-                .descripcion(request.descripcion())
-                .archivo(request.archivo())
+                .titulo(titulo)
+                .descripcion(descripcion)
+                .archivo(archivoUrl)
                 .build());
 
         notificacionService.crearNotificacion(

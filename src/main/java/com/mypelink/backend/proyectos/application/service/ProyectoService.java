@@ -14,6 +14,7 @@ import com.mypelink.backend.shared.infrastructure.exception.ResourceNotFoundExce
 import com.mypelink.backend.usuarios.domain.repository.EstudianteRepository;
 import com.mypelink.backend.usuarios.domain.repository.MypeRepository;
 import com.mypelink.backend.usuarios.domain.repository.UsuarioRepository;
+import com.mypelink.backend.usuarios.domain.model.Usuario;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -84,6 +85,7 @@ public class ProyectoService {
                 .entregablesSugeridos(request.entregablesSugeridos())
                 .areaSistemas(request.areaSistemas())
                 .cupos(request.cupos() != null ? request.cupos() : 1)
+                .delegarGestionAdmin(false)
                 .fechaInicio(request.fechaInicio())
                 .fechaLimite(request.fechaLimite())
                 .estado(WorkflowEstado.BORRADOR)
@@ -130,30 +132,6 @@ public class ProyectoService {
         return toPostulacionResponse(postulacion);
     }
 
-    private ProyectoResponse toResponse(Proyecto p) {
-        return new ProyectoResponse(
-                p.getId(), p.getTitulo(), p.getDescripcion(), p.getObjetivo(),
-                p.getRequisitos(), p.getEntregablesSugeridos(), p.getAreaSistemas(),
-                p.getEstado(), p.getCupos(), p.getFechaInicio(), p.getFechaLimite(),
-                p.getFechaCreacion(),
-                p.getMype() != null ? p.getMype().getNombreComercial() : null,
-                p.getMype() != null ? p.getMype().getId() : null
-        );
-    }
-
-    private PostulacionResponse toPostulacionResponse(Postulacion p) {
-        return new PostulacionResponse(
-                p.getId(),
-                p.getProyecto().getId(),
-                p.getProyecto().getTitulo(),
-                p.getEstudiante().getId(),
-                p.getEstudiante().getUsuario().getNombre(),
-                p.getEstado(),
-                p.getMensajePostulacion(),
-                p.getFechaPostulacion()
-        );
-    }
-
     @Transactional
     public ProyectoResponse publicar(Long proyectoId, String emailMype) {
         var usuario = usuarioRepository.findByEmailWithRole(emailMype)
@@ -174,17 +152,31 @@ public class ProyectoService {
         return toResponse(proyectoRepository.save(proyecto));
     }
 
-    public List<PostulacionResponse> listarPostulaciones(Long proyectoId, String emailMype) {
-        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+    private void validarPermisoGestionPostulaciones(Usuario usuarioLogueado, Proyecto proyecto) {
+        boolean esAdmin = usuarioLogueado.getRol().getNombre().equals("ROLE_ADMIN");
+
+        // Verificamos si es la MYPE dueña y si tiene el privilegio activado
+        boolean esDuenoMypeConPrivilegio = false;
+        if (!esAdmin) {
+            var mypeOpcional = mypeRepository.findByUsuarioId(usuarioLogueado.getId());
+            if (mypeOpcional.isPresent()) {
+                esDuenoMypeConPrivilegio = proyecto.getMype().getId().equals(mypeOpcional.get().getId())
+                        && Boolean.TRUE.equals(proyecto.getDelegarGestionAdmin());
+            }
+        }
+
+        if (!esAdmin && !esDuenoMypeConPrivilegio) {
+            throw new BusinessException("No tienes permiso para gestionar las postulaciones de este proyecto", HttpStatus.FORBIDDEN);
+        }
+    }
+
+    public List<PostulacionResponse> listarPostulaciones(Long proyectoId, String emailGestor) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailGestor)
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
-        var mype = mypeRepository.findByUsuarioId(usuario.getId())
-                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
         var proyecto = proyectoRepository.findById(proyectoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
 
-        if (!proyecto.getMype().getId().equals(mype.getId())) {
-            throw new BusinessException("No tienes permiso para ver estas postulaciones", HttpStatus.FORBIDDEN);
-        }
+        validarPermisoGestionPostulaciones(usuario, proyecto);
 
         return postulacionRepository.findByProyectoIdWithDetails(proyectoId)
                 .stream()
@@ -193,18 +185,14 @@ public class ProyectoService {
     }
 
     @Transactional
-    public PostulacionResponse cambiarEstadoPostulacion(Long proyectoId, Long postulacionId, CambiarEstadoPostulacionRequest request, String emailMype) {
+    public PostulacionResponse cambiarEstadoPostulacion(Long proyectoId, Long postulacionId, CambiarEstadoPostulacionRequest request, String emailGestor) {
 
-        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+        var usuario = usuarioRepository.findByEmailWithRole(emailGestor)
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
-        var mype = mypeRepository.findByUsuarioId(usuario.getId())
-                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
         var proyecto = proyectoRepository.findById(proyectoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
 
-        if (!proyecto.getMype().getId().equals(mype.getId())) {
-            throw new BusinessException("No tienes permiso para gestionar estas postulaciones", HttpStatus.FORBIDDEN);
-        }
+        validarPermisoGestionPostulaciones(usuario, proyecto);
 
         var postulacion = postulacionRepository.findById(postulacionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Postulacion", postulacionId));
@@ -249,5 +237,60 @@ public class ProyectoService {
                 .stream()
                 .map(this::toPostulacionResponse)
                 .toList();
+    }
+
+    // ✨ NUEVO MÉTODO: Lógica de Soft Delete (Cerrar Oferta)
+    @Transactional
+    public ProyectoResponse cerrarProyecto(Long proyectoId, String emailGestor) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailGestor)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        // Validación: Solo el Admin o la MYPE dueña pueden cerrarlo
+        boolean esAdmin = usuario.getRol().getNombre().equals("ROLE_ADMIN");
+        boolean esDuenoMype = false;
+
+        if (!esAdmin) {
+            var mypeOpcional = mypeRepository.findByUsuarioId(usuario.getId());
+            if (mypeOpcional.isPresent()) {
+                esDuenoMype = proyecto.getMype().getId().equals(mypeOpcional.get().getId());
+            }
+        }
+
+        if (!esAdmin && !esDuenoMype) {
+            throw new BusinessException("No tienes permiso para cerrar o eliminar este proyecto", HttpStatus.FORBIDDEN);
+        }
+
+        // Aplicamos el Soft Delete (Baja Lógica)
+        proyecto.setActivo(false);
+
+        var guardado = proyectoRepository.save(proyecto);
+
+        return toResponse(guardado);
+    }
+
+    private ProyectoResponse toResponse(Proyecto p) {
+        return new ProyectoResponse(
+                p.getId(), p.getTitulo(), p.getDescripcion(), p.getObjetivo(),
+                p.getRequisitos(), p.getEntregablesSugeridos(), p.getAreaSistemas(),
+                p.getEstado(), p.getCupos(), p.getFechaInicio(), p.getFechaLimite(),
+                p.getFechaCreacion(),
+                p.getMype() != null ? p.getMype().getNombreComercial() : null,
+                p.getMype() != null ? p.getMype().getId() : null
+        );
+    }
+
+    private PostulacionResponse toPostulacionResponse(Postulacion p) {
+        return new PostulacionResponse(
+                p.getId(),
+                p.getProyecto().getId(),
+                p.getProyecto().getTitulo(),
+                p.getEstudiante().getId(),
+                p.getEstudiante().getUsuario().getNombre(),
+                p.getEstado(),
+                p.getMensajePostulacion(),
+                p.getFechaPostulacion()
+        );
     }
 }

@@ -14,6 +14,7 @@ public record CrearProyectoRequest(
         String requisitos,
         String entregablesSugeridos,
         @NotNull AreaSistemas areaSistemas,
+        @NotNull(message = "Los cupos del proyecto son obligatorios")
         Integer cupos,
         LocalDate fechaInicio,
         LocalDate fechaLimite

@@ -50,6 +50,9 @@ public class Proyecto {
     @Builder.Default
     private Integer cupos = 1;
 
+    @Column(name = "delegar_gestion_admin", nullable = false)
+    private Boolean delegarGestionAdmin = false;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
     @Builder.Default

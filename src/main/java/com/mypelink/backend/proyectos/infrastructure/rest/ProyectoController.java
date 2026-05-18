@@ -11,7 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetails; // ✨ Interfaz correcta
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -68,12 +68,24 @@ public class ProyectoController {
         return ResponseEntity.ok(proyectoService.publicar(id, userDetails.getUsername()));
     }
 
+    // ✨ ADMIN AÑADIDO: Para que la intranet de MYPElink pueda ver postulaciones
     @GetMapping("/{id}/postulaciones")
-    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE', 'ROLE_ADMIN', 'ADMIN')")
     public ResponseEntity<List<PostulacionResponse>> listarPostulaciones(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(proyectoService.listarPostulaciones(id, userDetails.getUsername()));
+    }
+
+    // ✨ METODO CORREGIDO: Usando UserDetails y permisos listos
+    @PatchMapping("/{id}/cerrar")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MYPE', 'MYPE', 'ADMIN')")
+    public ResponseEntity<ProyectoResponse> cerrarProyecto(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        ProyectoResponse response = proyectoService.cerrarProyecto(id, userDetails.getUsername());
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/mis-postulaciones")
@@ -83,8 +95,9 @@ public class ProyectoController {
         return ResponseEntity.ok(proyectoService.misPostulaciones(userDetails.getUsername()));
     }
 
+    // ✨ ADMIN AÑADIDO: Para que la intranet asigne a los estudiantes aceptados
     @PatchMapping("/{id}/postulaciones/{postulacionId}/estado")
-    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE', 'ROLE_ADMIN', 'ADMIN')")
     public ResponseEntity<PostulacionResponse> cambiarEstadoPostulacion(
             @PathVariable Long id,
             @PathVariable Long postulacionId,

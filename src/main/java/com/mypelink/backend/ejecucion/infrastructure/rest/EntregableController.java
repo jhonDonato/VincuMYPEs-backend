@@ -12,6 +12,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.http.MediaType;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
 
@@ -22,14 +25,18 @@ public class EntregableController {
 
     private final EntregableService entregableService;
 
-    @PostMapping
+
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE', 'ESTUDIANTE')")
     public ResponseEntity<EntregableResponse> subir(
             @PathVariable Long proyectoId,
-            @Valid @RequestBody EntregableRequest request,
+            @RequestParam("titulo") String titulo,
+            @RequestParam("descripcion") String descripcion,
+            @RequestParam("archivo") MultipartFile archivo,
             @AuthenticationPrincipal UserDetails userDetails) {
+
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(entregableService.subir(proyectoId, request, userDetails.getUsername()));
+                .body(entregableService.subir(proyectoId, titulo, descripcion, archivo, userDetails.getUsername()));
     }
 
     @GetMapping
