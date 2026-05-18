@@ -13,6 +13,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails; // ✨ Interfaz correcta
 import org.springframework.web.bind.annotation.*;
+import com.mypelink.backend.proyectos.application.dto.EditarProyectoRequest;
 
 import java.util.List;
 
@@ -86,6 +87,24 @@ public class ProyectoController {
 
         ProyectoResponse response = proyectoService.cerrarProyecto(id, userDetails.getUsername());
         return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
+    public ResponseEntity<ProyectoResponse> editar(
+            @PathVariable Long id,
+            @Valid @RequestBody EditarProyectoRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(proyectoService.editar(id, request, userDetails.getUsername()));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
+    public ResponseEntity<Void> eliminar(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        proyectoService.eliminar(id, userDetails.getUsername());
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/mis-postulaciones")

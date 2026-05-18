@@ -3,6 +3,7 @@ package com.mypelink.backend.proyectos.application.service;
 import com.mypelink.backend.notificaciones.application.service.NotificacionService;
 import com.mypelink.backend.shared.domain.enums.TipoNotificacion;
 import com.mypelink.backend.proyectos.domain.model.Postulacion;
+import com.mypelink.backend.proyectos.application.dto.EditarProyectoRequest;
 import com.mypelink.backend.proyectos.domain.model.Proyecto;
 import com.mypelink.backend.proyectos.application.dto.*;
 import com.mypelink.backend.proyectos.domain.repository.PostulacionRepository;
@@ -273,6 +274,56 @@ public class ProyectoService {
         var guardado = proyectoRepository.save(proyecto);
 
         return toResponse(guardado);
+    }
+
+    @Transactional
+    public ProyectoResponse editar(Long proyectoId, EditarProyectoRequest request, String emailMype) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        if (!proyecto.getMype().getId().equals(mype.getId())) {
+            throw new BusinessException("No tienes permiso para editar este proyecto", HttpStatus.FORBIDDEN);
+        }
+        // Solo se puede editar si aún no tiene estudiantes en desarrollo
+        if (proyecto.getEstado() == WorkflowEstado.EN_DESARROLLO ||
+                proyecto.getEstado() == WorkflowEstado.COMPLETADO) {
+            throw new BusinessException("No puedes editar un proyecto que ya está en desarrollo o completado");
+        }
+
+        proyecto.setTitulo(request.getTitulo());
+        proyecto.setDescripcion(request.getDescripcion());
+        proyecto.setObjetivo(request.getObjetivo());
+        proyecto.setRequisitos(request.getRequisitos());
+        proyecto.setEntregablesSugeridos(request.getEntregablesSugeridos());
+        proyecto.setAreaSistemas(request.getAreaSistemas());
+        proyecto.setCupos(request.getCupos());
+        proyecto.setFechaInicio(request.getFechaInicio());
+        proyecto.setFechaLimite(request.getFechaLimite());
+
+        return toResponse(proyectoRepository.save(proyecto));
+    }
+
+    @Transactional
+    public void eliminar(Long proyectoId, String emailMype) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        if (!proyecto.getMype().getId().equals(mype.getId())) {
+            throw new BusinessException("No tienes permiso para eliminar este proyecto", HttpStatus.FORBIDDEN);
+        }
+        if (proyecto.getEstado() == WorkflowEstado.EN_DESARROLLO) {
+            throw new BusinessException("No puedes eliminar un proyecto que ya tiene estudiantes asignados");
+        }
+
+        proyectoRepository.delete(proyecto);
     }
 
     private ProyectoResponse toResponse(Proyecto p) {
