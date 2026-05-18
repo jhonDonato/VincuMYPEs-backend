@@ -110,7 +110,7 @@ public class ProyectoService {
             throw new BusinessException("Ya postulaste a este proyecto");
         }
         long proyectosActivos = postulacionRepository.countByEstudianteIdAndEstado(
-                estudiante.getId(), EstadoPostulacion.ACEPTADO);
+                studentId -> estudiante.getId(), EstadoPostulacion.ACEPTADO);
         if (proyectosActivos >= 2) {
             throw new BusinessException("No puedes tener más de 2 proyectos activos simultáneamente");
         }
@@ -205,6 +205,12 @@ public class ProyectoService {
             if (aceptados >= proyecto.getCupos()) {
                 throw new BusinessException("No hay cupos disponibles en este proyecto");
             }
+
+            // ✨ CONFIGURACIÓN EXITOSA: Si este alumno ocupa el último cupo libre, cerramos vacantes
+            if (aceptados + 1 == proyecto.getCupos()) {
+                proyecto.setEstado(WorkflowEstado.EN_EJECUCION);
+                proyectoRepository.save(proyecto);
+            }
         }
 
         postulacion.setEstado(request.estado());
@@ -239,7 +245,6 @@ public class ProyectoService {
                 .toList();
     }
 
-    // ✨ NUEVO MÉTODO: Lógica de Soft Delete (Cerrar Oferta)
     @Transactional
     public ProyectoResponse cerrarProyecto(Long proyectoId, String emailGestor) {
         var usuario = usuarioRepository.findByEmailWithRole(emailGestor)
@@ -247,7 +252,6 @@ public class ProyectoService {
         var proyecto = proyectoRepository.findById(proyectoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
 
-        // Validación: Solo el Admin o la MYPE dueña pueden cerrarlo
         boolean esAdmin = usuario.getRol().getNombre().equals("ROLE_ADMIN");
         boolean esDuenoMype = false;
 
@@ -262,7 +266,6 @@ public class ProyectoService {
             throw new BusinessException("No tienes permiso para cerrar o eliminar este proyecto", HttpStatus.FORBIDDEN);
         }
 
-        // Aplicamos el Soft Delete (Baja Lógica)
         proyecto.setActivo(false);
 
         var guardado = proyectoRepository.save(proyecto);
