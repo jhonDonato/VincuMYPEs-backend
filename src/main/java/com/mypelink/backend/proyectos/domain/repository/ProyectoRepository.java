@@ -26,4 +26,7 @@ public interface ProyectoRepository extends JpaRepository<Proyecto, Long> {
 
     @Query("SELECT p FROM Proyecto p JOIN FETCH p.mype m JOIN FETCH m.usuario WHERE p.id = :id")
     java.util.Optional<Proyecto> findByIdWithMype(@Param("id") Long id);
+
+    @Query("SELECT p FROM Proyecto p JOIN FETCH p.mype m ORDER BY p.fechaCreacion DESC")
+    List<Proyecto> findAllConMype();
 }
