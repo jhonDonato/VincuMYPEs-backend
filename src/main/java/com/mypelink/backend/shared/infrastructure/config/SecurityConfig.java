@@ -41,6 +41,8 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
+                        // API RENIEC pública
+                        .requestMatchers("/api/reniec/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/proyectos/{id}").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/proyectos").permitAll()
                         .requestMatchers("/api/proyectos/**").authenticated()
@@ -95,4 +97,5 @@ public class SecurityConfig {
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
+
 }
