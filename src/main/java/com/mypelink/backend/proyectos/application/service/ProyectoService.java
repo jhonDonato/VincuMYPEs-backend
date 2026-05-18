@@ -4,9 +4,11 @@ import com.mypelink.backend.notificaciones.application.service.NotificacionServi
 import com.mypelink.backend.shared.domain.enums.TipoNotificacion;
 import com.mypelink.backend.proyectos.domain.model.Postulacion;
 import com.mypelink.backend.proyectos.domain.model.Proyecto;
+import com.mypelink.backend.proyectos.domain.model.WorkflowHistorial;
 import com.mypelink.backend.proyectos.application.dto.*;
 import com.mypelink.backend.proyectos.domain.repository.PostulacionRepository;
 import com.mypelink.backend.proyectos.domain.repository.ProyectoRepository;
+import com.mypelink.backend.proyectos.domain.repository.WorkflowHistorialRepository;
 import com.mypelink.backend.shared.domain.enums.EstadoPostulacion;
 import com.mypelink.backend.shared.domain.enums.WorkflowEstado;
 import com.mypelink.backend.shared.infrastructure.exception.BusinessException;
@@ -21,6 +23,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.mypelink.backend.proyectos.application.dto.EditarProyectoRequest;
 
 import java.util.List;
 
@@ -34,6 +37,11 @@ public class ProyectoService {
     private final EstudianteRepository estudianteRepository;
     private final UsuarioRepository usuarioRepository;
     private final NotificacionService notificacionService;
+    private final WorkflowHistorialRepository workflowHistorialRepository;
+
+    // ======================================================================================
+    // 🛠️ MÉTODOS EXISTENTES (MYPE y Estudiante)
+    // ======================================================================================
 
     @Transactional(readOnly = true)
     public List<ProyectoResponse> listarPorMype(String emailMype) {
@@ -85,7 +93,7 @@ public class ProyectoService {
                 .entregablesSugeridos(request.entregablesSugeridos())
                 .areaSistemas(request.areaSistemas())
                 .cupos(request.cupos() != null ? request.cupos() : 1)
-                .delegarGestionAdmin(false)
+                .delegarGestionAdmin(false) // Por defecto, el admin tiene el control
                 .fechaInicio(request.fechaInicio())
                 .fechaLimite(request.fechaLimite())
                 .estado(WorkflowEstado.BORRADOR)
@@ -110,7 +118,6 @@ public class ProyectoService {
             throw new BusinessException("Ya postulaste a este proyecto");
         }
 
-        // ✨ SOLUCIÓN AL ERROR DE LAMBDA: Pasamos el ID directo
         long proyectosActivos = postulacionRepository.countByEstudianteIdAndEstado(
                 estudiante.getId(), EstadoPostulacion.ACEPTADO);
 
@@ -208,10 +215,16 @@ public class ProyectoService {
                 throw new BusinessException("No hay cupos disponibles en este proyecto");
             }
 
-            // ✨ SOLUCIÓN AL ENUM: Transicionamos al estado correcto "EN_DESARROLLO"
             if (aceptados + 1 == proyecto.getCupos()) {
                 proyecto.setEstado(WorkflowEstado.EN_DESARROLLO);
                 proyectoRepository.save(proyecto);
+
+                // Guardar log de workflow automático (Corregido 'cambiadoPor' y omitiendo 'fechaCambio' por PrePersist)
+                workflowHistorialRepository.save(WorkflowHistorial.builder()
+                        .proyecto(proyecto).cambiadoPor(usuario)
+                        .estadoAnterior(WorkflowEstado.PENDIENTE).estadoNuevo(WorkflowEstado.EN_DESARROLLO)
+                        .comentario("Convocatoria cerrada automáticamente. Cupos llenos al aceptar postulante.")
+                        .build());
             }
         }
 
@@ -269,11 +282,157 @@ public class ProyectoService {
         }
 
         proyecto.setActivo(false);
-
-        var guardado = proyectoRepository.save(proyecto);
-
-        return toResponse(guardado);
+        return toResponse(proyectoRepository.save(proyecto));
     }
+
+    @Transactional
+    public ProyectoResponse editar(Long proyectoId, EditarProyectoRequest request, String emailMype) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        if (!proyecto.getMype().getId().equals(mype.getId())) {
+            throw new BusinessException("No tienes permiso para editar este proyecto", HttpStatus.FORBIDDEN);
+        }
+        // Solo se puede editar si aún no tiene estudiantes en desarrollo
+        if (proyecto.getEstado() == WorkflowEstado.EN_DESARROLLO ||
+                proyecto.getEstado() == WorkflowEstado.COMPLETADO) {
+            throw new BusinessException("No puedes editar un proyecto que ya está en desarrollo o completado");
+        }
+
+        proyecto.setTitulo(request.getTitulo());
+        proyecto.setDescripcion(request.getDescripcion());
+        proyecto.setObjetivo(request.getObjetivo());
+        proyecto.setRequisitos(request.getRequisitos());
+        proyecto.setEntregablesSugeridos(request.getEntregablesSugeridos());
+        proyecto.setAreaSistemas(request.getAreaSistemas());
+        proyecto.setCupos(request.getCupos());
+        proyecto.setFechaInicio(request.getFechaInicio());
+        proyecto.setFechaLimite(request.getFechaLimite());
+
+        return toResponse(proyectoRepository.save(proyecto));
+    }
+
+    @Transactional
+    public void eliminar(Long proyectoId, String emailMype) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        if (!proyecto.getMype().getId().equals(mype.getId())) {
+            throw new BusinessException("No tienes permiso para eliminar este proyecto", HttpStatus.FORBIDDEN);
+        }
+        if (proyecto.getEstado() == WorkflowEstado.EN_DESARROLLO) {
+            throw new BusinessException("No puedes eliminar un proyecto que ya tiene estudiantes asignados");
+        }
+
+        proyectoRepository.delete(proyecto);
+    }
+
+    // ======================================================================================
+    // 👑 MÉTODOS NUEVOS: DOMINIO ADMINISTRADOR (FASE 1)
+    // ======================================================================================
+
+    @Transactional(readOnly = true)
+    public List<ProyectoAdminResponse> listarParaAdmin(String emailAdmin) {
+        validarRolAdmin(emailAdmin);
+
+        return proyectoRepository.findAllConMype().stream().map(p -> {
+            long aceptados = postulacionRepository.findByProyectoId(p.getId())
+                    .stream()
+                    .filter(post -> post.getEstado() == EstadoPostulacion.ACEPTADO)
+                    .count();
+
+            return new ProyectoAdminResponse(
+                    p.getId(),
+                    p.getTitulo(),
+                    p.getAreaSistemas(),
+                    p.getEstado(),
+                    p.getCupos(),
+                    aceptados,
+                    p.getFechaCreacion(),
+                    p.getMype() != null ? p.getMype().getNombreComercial() : "Sin MYPE",
+                    p.getMype() != null ? p.getMype().getId() : null,
+                    p.getDelegarGestionAdmin()
+            );
+        }).toList();
+    }
+
+    @Transactional
+    public void cederGestion(Long proyectoId, String emailAdmin) {
+        var admin = validarRolAdmin(emailAdmin);
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        proyecto.setDelegarGestionAdmin(true);
+        proyectoRepository.save(proyecto);
+
+        // Corregido 'cambiadoPor'
+        workflowHistorialRepository.save(WorkflowHistorial.builder()
+                .proyecto(proyecto).cambiadoPor(admin)
+                .estadoAnterior(proyecto.getEstado()).estadoNuevo(proyecto.getEstado())
+                .comentario("El administrador cedió la gestión de postulantes a la MYPE.")
+                .build());
+    }
+
+    @Transactional
+    public void auditarAbandono(Long proyectoId, Long postulacionId, String emailAdmin) {
+        var admin = validarRolAdmin(emailAdmin);
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+        var postulacion = postulacionRepository.findById(postulacionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Postulacion", postulacionId));
+
+        WorkflowEstado estadoAnterior = proyecto.getEstado();
+
+        // 1. Expulsar al alumno
+        postulacion.setEstado(EstadoPostulacion.RECHAZADO);
+        postulacionRepository.save(postulacion);
+
+        // 2. Retroceder el proyecto a la bolsa pública
+        proyecto.setEstado(WorkflowEstado.PENDIENTE);
+        proyectoRepository.save(proyecto);
+
+        // 3. Registrar en la caja negra (Auditoría) - Corregido 'cambiadoPor'
+        workflowHistorialRepository.save(WorkflowHistorial.builder()
+                .proyecto(proyecto).cambiadoPor(admin)
+                .estadoAnterior(estadoAnterior).estadoNuevo(WorkflowEstado.PENDIENTE)
+                .comentario("Abandono reportado. Estudiante expulsado y proyecto reabierto.")
+                .build());
+
+        // 4. Notificar a los otros alumnos
+        postulacionRepository.findByProyectoId(proyectoId).forEach(p -> {
+            if (!p.getId().equals(postulacionId)) {
+                notificacionService.crearNotificacion(
+                        p.getEstudiante().getUsuario(),
+                        "¡Cupo liberado!",
+                        "Se ha liberado un cupo de emergencia para: " + proyecto.getTitulo() + ". ¡Vuelve a postular!",
+                        TipoNotificacion.PROYECTO, // Corregido a PROYECTO
+                        "/proyectos/" + proyecto.getId()
+                );
+            }
+        });
+    }
+
+    // Helper privado para seguridad
+    private Usuario validarRolAdmin(String email) {
+        var usuario = usuarioRepository.findByEmailWithRole(email)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        if (!usuario.getRol().getNombre().equals("ROLE_ADMIN")) {
+            throw new BusinessException("Acceso denegado: Se requiere rol Administrador", HttpStatus.FORBIDDEN);
+        }
+        return usuario;
+    }
+
+    // ======================================================================================
+    // MAPPERS
+    // ======================================================================================
 
     private ProyectoResponse toResponse(Proyecto p) {
         return new ProyectoResponse(
@@ -288,14 +447,9 @@ public class ProyectoService {
 
     private PostulacionResponse toPostulacionResponse(Postulacion p) {
         return new PostulacionResponse(
-                p.getId(),
-                p.getProyecto().getId(),
-                p.getProyecto().getTitulo(),
-                p.getEstudiante().getId(),
-                p.getEstudiante().getUsuario().getNombre(),
-                p.getEstado(),
-                p.getMensajePostulacion(),
-                p.getFechaPostulacion()
+                p.getId(), p.getProyecto().getId(), p.getProyecto().getTitulo(),
+                p.getEstudiante().getId(), p.getEstudiante().getUsuario().getNombre(),
+                p.getEstado(), p.getMensajePostulacion(), p.getFechaPostulacion()
         );
     }
 }
