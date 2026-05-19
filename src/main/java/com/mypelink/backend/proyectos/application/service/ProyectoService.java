@@ -165,18 +165,41 @@ public class ProyectoService {
     private void validarPermisoGestionPostulaciones(Usuario usuarioLogueado, Proyecto proyecto) {
         boolean esAdmin = usuarioLogueado.getRol().getNombre().equals("ROLE_ADMIN");
 
-        boolean esDuenoMypeConPrivilegio = false;
+        boolean esDuenoMype = false;
         if (!esAdmin) {
             var mypeOpcional = mypeRepository.findByUsuarioId(usuarioLogueado.getId());
             if (mypeOpcional.isPresent()) {
-                esDuenoMypeConPrivilegio = proyecto.getMype().getId().equals(mypeOpcional.get().getId())
-                        && Boolean.TRUE.equals(proyecto.getDelegarGestionAdmin());
+                // La MYPE siempre puede ver y gestionar sus PROPIOS proyectos
+                esDuenoMype = proyecto.getMype().getId().equals(mypeOpcional.get().getId());
             }
         }
 
-        if (!esAdmin && !esDuenoMypeConPrivilegio) {
-            throw new BusinessException("No tienes permiso para gestionar las postulaciones de este proyecto", HttpStatus.FORBIDDEN);
+        if (!esAdmin && !esDuenoMype) {
+            throw new BusinessException(
+                    "No tienes permiso para gestionar las postulaciones de este proyecto",
+                    HttpStatus.FORBIDDEN
+            );
         }
+    }
+
+    @Transactional(readOnly = true)
+    public List<PostulacionResponse> listarPostulacionesAceptadas(Long proyectoId, String emailMype) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        if (!proyecto.getMype().getId().equals(mype.getId())) {
+            throw new BusinessException("No tienes permiso para ver este proyecto", HttpStatus.FORBIDDEN);
+        }
+
+        return postulacionRepository
+                .findByProyectoIdAndEstadoWithDetails(proyectoId, EstadoPostulacion.ACEPTADO)
+                .stream()
+                .map(this::toPostulacionResponse)
+                .toList();
     }
 
     public List<PostulacionResponse> listarPostulaciones(Long proyectoId, String emailGestor) {

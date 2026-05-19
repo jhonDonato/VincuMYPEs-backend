@@ -34,4 +34,14 @@ public interface PostulacionRepository extends JpaRepository<Postulacion, Long> 
             "WHERE e.id = :estudianteId " +
             "ORDER BY p.fechaPostulacion DESC")
     List<Postulacion> findByEstudianteIdWithDetails(@Param("estudianteId") Long estudianteId);
+
+    @Query("SELECT p FROM Postulacion p " +
+            "JOIN FETCH p.proyecto " +
+            "JOIN FETCH p.estudiante e " +
+            "JOIN FETCH e.usuario " +
+            "WHERE p.proyecto.id = :proyectoId AND p.estado = :estado")
+    List<Postulacion> findByProyectoIdAndEstadoWithDetails(
+            @Param("proyectoId") Long proyectoId,
+            @Param("estado") EstadoPostulacion estado
+    );
 }

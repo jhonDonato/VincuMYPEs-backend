@@ -26,8 +26,8 @@ public class ProyectoController {
     private final ProyectoService proyectoService;
 
     @GetMapping
-    public ResponseEntity<Page<ProyectoResponse>> listar(
-            @PageableDefault(size = 10, sort = "fechaCreacion") Pageable pageable) {
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Page<ProyectoResponse>> listar(Pageable pageable) {
         return ResponseEntity.ok(proyectoService.listarPublicos(pageable));
     }
 
@@ -70,6 +70,17 @@ public class ProyectoController {
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(proyectoService.publicar(id, userDetails.getUsername()));
+    }
+
+    // Vista normal MYPE — solo postulantes que el admin aceptó
+    @GetMapping("/{id}/postulaciones/aceptadas")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
+    public ResponseEntity<List<PostulacionResponse>> listarAceptadas(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(
+                proyectoService.listarPostulacionesAceptadas(id, userDetails.getUsername())
+        );
     }
 
     @GetMapping("/{id}/postulaciones")
