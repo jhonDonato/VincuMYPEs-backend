@@ -45,7 +45,18 @@ public class ApisNetService {
                             DniResponseDto.class
                     );
 
-            return response.getBody();
+            DniResponseDto dto = response.getBody();
+
+            // Agrega estos logs para verificar la respuesta
+            System.out.println("Respuesta de PeruAPI: " + dto);
+            if (dto != null) {
+                System.out.println("Nombres: " + dto.getNombres());
+                System.out.println("Apellido Paterno: " + dto.getApellido_paterno());
+                System.out.println("Apellido Materno: " + dto.getApellido_materno());
+            }
+
+            return dto;
+
 
         } catch (Exception e) {
 
