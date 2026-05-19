@@ -23,6 +23,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.mypelink.backend.proyectos.application.dto.EditarProyectoRequest;
 
 import java.util.List;
 
@@ -164,18 +165,41 @@ public class ProyectoService {
     private void validarPermisoGestionPostulaciones(Usuario usuarioLogueado, Proyecto proyecto) {
         boolean esAdmin = usuarioLogueado.getRol().getNombre().equals("ROLE_ADMIN");
 
-        boolean esDuenoMypeConPrivilegio = false;
+        boolean esDuenoMype = false;
         if (!esAdmin) {
             var mypeOpcional = mypeRepository.findByUsuarioId(usuarioLogueado.getId());
             if (mypeOpcional.isPresent()) {
-                esDuenoMypeConPrivilegio = proyecto.getMype().getId().equals(mypeOpcional.get().getId())
-                        && Boolean.TRUE.equals(proyecto.getDelegarGestionAdmin());
+                // La MYPE siempre puede ver y gestionar sus PROPIOS proyectos
+                esDuenoMype = proyecto.getMype().getId().equals(mypeOpcional.get().getId());
             }
         }
 
-        if (!esAdmin && !esDuenoMypeConPrivilegio) {
-            throw new BusinessException("No tienes permiso para gestionar las postulaciones de este proyecto", HttpStatus.FORBIDDEN);
+        if (!esAdmin && !esDuenoMype) {
+            throw new BusinessException(
+                    "No tienes permiso para gestionar las postulaciones de este proyecto",
+                    HttpStatus.FORBIDDEN
+            );
         }
+    }
+
+    @Transactional(readOnly = true)
+    public List<PostulacionResponse> listarPostulacionesAceptadas(Long proyectoId, String emailMype) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        if (!proyecto.getMype().getId().equals(mype.getId())) {
+            throw new BusinessException("No tienes permiso para ver este proyecto", HttpStatus.FORBIDDEN);
+        }
+
+        return postulacionRepository
+                .findByProyectoIdAndEstadoWithDetails(proyectoId, EstadoPostulacion.ACEPTADO)
+                .stream()
+                .map(this::toPostulacionResponse)
+                .toList();
     }
 
     public List<PostulacionResponse> listarPostulaciones(Long proyectoId, String emailGestor) {
@@ -282,6 +306,56 @@ public class ProyectoService {
 
         proyecto.setActivo(false);
         return toResponse(proyectoRepository.save(proyecto));
+    }
+
+    @Transactional
+    public ProyectoResponse editar(Long proyectoId, EditarProyectoRequest request, String emailMype) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        if (!proyecto.getMype().getId().equals(mype.getId())) {
+            throw new BusinessException("No tienes permiso para editar este proyecto", HttpStatus.FORBIDDEN);
+        }
+        // Solo se puede editar si aún no tiene estudiantes en desarrollo
+        if (proyecto.getEstado() == WorkflowEstado.EN_DESARROLLO ||
+                proyecto.getEstado() == WorkflowEstado.COMPLETADO) {
+            throw new BusinessException("No puedes editar un proyecto que ya está en desarrollo o completado");
+        }
+
+        proyecto.setTitulo(request.getTitulo());
+        proyecto.setDescripcion(request.getDescripcion());
+        proyecto.setObjetivo(request.getObjetivo());
+        proyecto.setRequisitos(request.getRequisitos());
+        proyecto.setEntregablesSugeridos(request.getEntregablesSugeridos());
+        proyecto.setAreaSistemas(request.getAreaSistemas());
+        proyecto.setCupos(request.getCupos());
+        proyecto.setFechaInicio(request.getFechaInicio());
+        proyecto.setFechaLimite(request.getFechaLimite());
+
+        return toResponse(proyectoRepository.save(proyecto));
+    }
+
+    @Transactional
+    public void eliminar(Long proyectoId, String emailMype) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        if (!proyecto.getMype().getId().equals(mype.getId())) {
+            throw new BusinessException("No tienes permiso para eliminar este proyecto", HttpStatus.FORBIDDEN);
+        }
+        if (proyecto.getEstado() == WorkflowEstado.EN_DESARROLLO) {
+            throw new BusinessException("No puedes eliminar un proyecto que ya tiene estudiantes asignados");
+        }
+
+        proyectoRepository.delete(proyecto);
     }
 
     // ======================================================================================

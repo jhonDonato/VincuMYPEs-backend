@@ -13,6 +13,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import com.mypelink.backend.proyectos.application.dto.EditarProyectoRequest;
 
 import java.util.List;
 
@@ -25,8 +26,8 @@ public class ProyectoController {
     private final ProyectoService proyectoService;
 
     @GetMapping
-    public ResponseEntity<Page<ProyectoResponse>> listar(
-            @PageableDefault(size = 10, sort = "fechaCreacion") Pageable pageable) {
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Page<ProyectoResponse>> listar(Pageable pageable) {
         return ResponseEntity.ok(proyectoService.listarPublicos(pageable));
     }
 
@@ -71,6 +72,17 @@ public class ProyectoController {
         return ResponseEntity.ok(proyectoService.publicar(id, userDetails.getUsername()));
     }
 
+    // Vista normal MYPE — solo postulantes que el admin aceptó
+    @GetMapping("/{id}/postulaciones/aceptadas")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
+    public ResponseEntity<List<PostulacionResponse>> listarAceptadas(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(
+                proyectoService.listarPostulacionesAceptadas(id, userDetails.getUsername())
+        );
+    }
+
     @GetMapping("/{id}/postulaciones")
     @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE', 'ROLE_ADMIN', 'ADMIN')")
     public ResponseEntity<List<PostulacionResponse>> listarPostulaciones(
@@ -87,6 +99,24 @@ public class ProyectoController {
 
         ProyectoResponse response = proyectoService.cerrarProyecto(id, userDetails.getUsername());
         return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
+    public ResponseEntity<ProyectoResponse> editar(
+            @PathVariable Long id,
+            @Valid @RequestBody EditarProyectoRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(proyectoService.editar(id, request, userDetails.getUsername()));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
+    public ResponseEntity<Void> eliminar(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        proyectoService.eliminar(id, userDetails.getUsername());
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/mis-postulaciones")

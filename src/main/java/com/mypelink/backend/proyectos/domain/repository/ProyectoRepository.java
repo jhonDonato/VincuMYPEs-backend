@@ -15,7 +15,7 @@ public interface ProyectoRepository extends JpaRepository<Proyecto, Long> {
     @Query("SELECT p FROM Proyecto p JOIN FETCH p.mype m WHERE p.mype.id = :mypeId ORDER BY p.fechaCreacion DESC")
     List<Proyecto> findByMypeIdConMype(@Param("mypeId") Long mypeId);
 
-    @Query("SELECT p FROM Proyecto p JOIN FETCH p.mype m WHERE p.estado = :estado AND p.activo = true")
+    @Query("SELECT p FROM Proyecto p JOIN FETCH p.mype m LEFT JOIN FETCH p.publicadoPor WHERE p.estado = :estado AND p.activo = true")
     List<Proyecto> findPublicosConMype(@Param("estado") WorkflowEstado estado);
 
     @Query(value = "SELECT COUNT(p) FROM Proyecto p WHERE p.estado = :estado AND p.activo = true")
