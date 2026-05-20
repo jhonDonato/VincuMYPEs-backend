@@ -12,5 +12,7 @@ public record PostulacionResponse(
         String estudianteNombre,
         EstadoPostulacion estado,
         String mensajePostulacion,
-        LocalDateTime fechaPostulacion
+        LocalDateTime fechaPostulacion,
+        String estudianteCvUrl,
+        LocalDateTime fechaLimiteConfirmacion
 ) {}

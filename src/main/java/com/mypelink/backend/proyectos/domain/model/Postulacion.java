@@ -52,6 +52,9 @@ public class Postulacion {
     @Column(name = "observaciones_respuesta", columnDefinition = "TEXT")
     private String observacionesRespuesta;
 
+    @Column(name = "fecha_limite_confirmacion")
+    private LocalDateTime fechaLimiteConfirmacion;
+
     @PrePersist
     protected void onCreate() {
         this.fechaPostulacion = LocalDateTime.now();

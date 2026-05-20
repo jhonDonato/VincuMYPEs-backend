@@ -12,5 +12,6 @@ public record EstudianteProfileResponse(
         String bio,
         String skills,
         String portafolioUrl,
-        String linkedinUrl
+        String linkedinUrl,
+        String cvUrl
 ) {}

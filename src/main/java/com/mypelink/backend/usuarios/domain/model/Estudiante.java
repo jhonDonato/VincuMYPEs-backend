@@ -44,6 +44,9 @@ public class Estudiante {
     @Column(name = "linkedin_url", length = 255)
     private String linkedinUrl;
 
+    @Column(name = "cv_url", length = 500)
+    private String cvUrl;
+
     @Column(nullable = false)
     private Boolean activo;
 

@@ -32,7 +32,6 @@ public class S3Service {
         if (!"application/pdf".equalsIgnoreCase(file.getContentType())) {
             throw new BusinessException("Formato no válido. Por seguridad, los entregables solo pueden ser archivos PDF.");
         }
-
         String fileName = "entregables/" + UUID.randomUUID() + "_" + file.getOriginalFilename().replace(" ", "_");
 
         try {
@@ -50,6 +49,38 @@ public class S3Service {
             throw new BusinessException("Ocurrió un error al procesar el archivo PDF.");
         } catch (Exception e) {
             throw new BusinessException("Error de conexión con AWS S3: " + e.getMessage());
+        }
+    }
+
+    public String subirCvPdf(MultipartFile file) {
+        if (file.isEmpty()) {
+            throw new BusinessException("El archivo CV está vacío.");
+        }
+        if (!"application/pdf".equalsIgnoreCase(file.getContentType())) {
+            throw new BusinessException("El CV debe ser un archivo PDF.");
+        }
+
+        long maxBytes = 5L * 1024 * 1024; // 5 MB
+        if (file.getSize() > maxBytes) {
+            throw new BusinessException("El CV no puede superar los 5MB.");
+        }
+
+        String fileName = "cvs/" + UUID.randomUUID() + "_" + file.getOriginalFilename().replace(" ", "_");
+
+        try {
+            PutObjectRequest putOb = PutObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(fileName)
+                    .contentType("application/pdf")
+                    .build();
+
+            s3Client.putObject(putOb, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
+            return "https://" + bucketName + ".s3." + region + ".amazonaws.com/" + fileName;
+
+        } catch (IOException e) {
+            throw new BusinessException("Ocurrió un error al procesar el CV.");
+        } catch (Exception e) {
+            throw new BusinessException("Error al subir el CV a AWS S3: " + e.getMessage());
         }
     }
 

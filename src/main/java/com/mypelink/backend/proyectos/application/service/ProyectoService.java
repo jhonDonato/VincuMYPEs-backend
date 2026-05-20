@@ -23,8 +23,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.mypelink.backend.proyectos.application.dto.EditarProyectoRequest;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -39,9 +39,12 @@ public class ProyectoService {
     private final NotificacionService notificacionService;
     private final WorkflowHistorialRepository workflowHistorialRepository;
 
-    // ======================================================================================
-    // 🛠️ MÉTODOS EXISTENTES (MYPE y Estudiante)
-    // ======================================================================================
+    // Plazo fijo de 12 horas para cada etapa del flujo trilateral
+    private static final int HORAS_PLAZO = 12;
+
+    // ══════════════════════════════════════════════════════════════
+    // MÉTODOS EXISTENTES
+    // ══════════════════════════════════════════════════════════════
 
     @Transactional(readOnly = true)
     public List<ProyectoResponse> listarPorMype(String emailMype) {
@@ -49,26 +52,19 @@ public class ProyectoService {
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
         var mype = mypeRepository.findByUsuarioId(usuario.getId())
                 .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
-
         return proyectoRepository.findByMypeIdConMype(mype.getId())
-                .stream()
-                .map(this::toResponse)
-                .toList();
+                .stream().map(this::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public Page<ProyectoResponse> listarPublicos(Pageable pageable) {
         List<ProyectoResponse> lista = proyectoRepository
                 .findPublicosConMype(WorkflowEstado.PENDIENTE)
-                .stream()
-                .map(this::toResponse)
-                .toList();
-
+                .stream().map(this::toResponse).toList();
         int start = (int) pageable.getOffset();
         int end = Math.min(start + pageable.getPageSize(), lista.size());
-        List<ProyectoResponse> page = lista.subList(start, end);
-
-        return new org.springframework.data.domain.PageImpl<>(page, pageable, lista.size());
+        return new org.springframework.data.domain.PageImpl<>(
+                lista.subList(start, end), pageable, lista.size());
     }
 
     public ProyectoResponse obtenerPorId(Long id) {
@@ -83,22 +79,15 @@ public class ProyectoService {
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
         var mype = mypeRepository.findByUsuarioId(usuario.getId())
                 .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado para este usuario"));
-
         var proyecto = Proyecto.builder()
-                .mype(mype)
-                .titulo(request.titulo())
-                .descripcion(request.descripcion())
-                .objetivo(request.objetivo())
-                .requisitos(request.requisitos())
+                .mype(mype).titulo(request.titulo()).descripcion(request.descripcion())
+                .objetivo(request.objetivo()).requisitos(request.requisitos())
                 .entregablesSugeridos(request.entregablesSugeridos())
                 .areaSistemas(request.areaSistemas())
                 .cupos(request.cupos() != null ? request.cupos() : 1)
-                .delegarGestionAdmin(false) // Por defecto, el admin tiene el control
-                .fechaInicio(request.fechaInicio())
-                .fechaLimite(request.fechaLimite())
-                .estado(WorkflowEstado.BORRADOR)
-                .build();
-
+                .delegarGestionAdmin(false)
+                .fechaInicio(request.fechaInicio()).fechaLimite(request.fechaLimite())
+                .estado(WorkflowEstado.BORRADOR).build();
         return toResponse(proyectoRepository.save(proyecto));
     }
 
@@ -117,28 +106,26 @@ public class ProyectoService {
         if (postulacionRepository.existsByProyectoIdAndEstudianteId(proyectoId, estudiante.getId())) {
             throw new BusinessException("Ya postulaste a este proyecto");
         }
-
         long proyectosActivos = postulacionRepository.countByEstudianteIdAndEstado(
-                estudiante.getId(), EstadoPostulacion.ACEPTADO);
-
+                estudiante.getId(), EstadoPostulacion.CONFIRMADO);
         if (proyectosActivos >= 2) {
             throw new BusinessException("No puedes tener más de 2 proyectos activos simultáneamente");
         }
 
         var postulacion = postulacionRepository.save(Postulacion.builder()
-                .proyecto(proyecto)
-                .estudiante(estudiante)
+                .proyecto(proyecto).estudiante(estudiante)
                 .mensajePostulacion(request.mensajePostulacion())
                 .archivoAdjunto(request.archivoAdjunto())
                 .build());
+
         notificacionService.crearNotificacion(
                 proyecto.getMype().getUsuario(),
                 "Nueva postulación recibida",
-                "El estudiante " + estudiante.getUsuario().getNombre() + " postuló a tu proyecto: " + proyecto.getTitulo(),
+                "El estudiante " + estudiante.getUsuario().getNombre()
+                        + " postuló a tu proyecto: " + proyecto.getTitulo(),
                 TipoNotificacion.POSTULACION,
                 "/dashboard/postulaciones/" + proyecto.getId()
         );
-
         return toPostulacionResponse(postulacion);
     }
 
@@ -150,36 +137,14 @@ public class ProyectoService {
                 .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
         var proyecto = proyectoRepository.findById(proyectoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
-
         if (!proyecto.getMype().getId().equals(mype.getId())) {
             throw new BusinessException("No tienes permiso para publicar este proyecto", HttpStatus.FORBIDDEN);
         }
         if (proyecto.getEstado() != WorkflowEstado.BORRADOR) {
             throw new BusinessException("Solo los proyectos en BORRADOR pueden publicarse");
         }
-
         proyecto.setEstado(WorkflowEstado.PENDIENTE);
         return toResponse(proyectoRepository.save(proyecto));
-    }
-
-    private void validarPermisoGestionPostulaciones(Usuario usuarioLogueado, Proyecto proyecto) {
-        boolean esAdmin = usuarioLogueado.getRol().getNombre().equals("ROLE_ADMIN");
-
-        boolean esDuenoMype = false;
-        if (!esAdmin) {
-            var mypeOpcional = mypeRepository.findByUsuarioId(usuarioLogueado.getId());
-            if (mypeOpcional.isPresent()) {
-                // La MYPE siempre puede ver y gestionar sus PROPIOS proyectos
-                esDuenoMype = proyecto.getMype().getId().equals(mypeOpcional.get().getId());
-            }
-        }
-
-        if (!esAdmin && !esDuenoMype) {
-            throw new BusinessException(
-                    "No tienes permiso para gestionar las postulaciones de este proyecto",
-                    HttpStatus.FORBIDDEN
-            );
-        }
     }
 
     @Transactional(readOnly = true)
@@ -190,16 +155,12 @@ public class ProyectoService {
                 .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
         var proyecto = proyectoRepository.findById(proyectoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
-
         if (!proyecto.getMype().getId().equals(mype.getId())) {
             throw new BusinessException("No tienes permiso para ver este proyecto", HttpStatus.FORBIDDEN);
         }
-
         return postulacionRepository
-                .findByProyectoIdAndEstadoWithDetails(proyectoId, EstadoPostulacion.ACEPTADO)
-                .stream()
-                .map(this::toPostulacionResponse)
-                .toList();
+                .findByProyectoIdAndEstadoWithDetails(proyectoId, EstadoPostulacion.CONFIRMADO)
+                .stream().map(this::toPostulacionResponse).toList();
     }
 
     public List<PostulacionResponse> listarPostulaciones(Long proyectoId, String emailGestor) {
@@ -207,68 +168,9 @@ public class ProyectoService {
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
         var proyecto = proyectoRepository.findById(proyectoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
-
         validarPermisoGestionPostulaciones(usuario, proyecto);
-
         return postulacionRepository.findByProyectoIdWithDetails(proyectoId)
-                .stream()
-                .map(this::toPostulacionResponse)
-                .toList();
-    }
-
-    @Transactional
-    public PostulacionResponse cambiarEstadoPostulacion(Long proyectoId, Long postulacionId, CambiarEstadoPostulacionRequest request, String emailGestor) {
-
-        var usuario = usuarioRepository.findByEmailWithRole(emailGestor)
-                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
-        var proyecto = proyectoRepository.findById(proyectoId)
-                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
-
-        validarPermisoGestionPostulaciones(usuario, proyecto);
-
-        var postulacion = postulacionRepository.findById(postulacionId)
-                .orElseThrow(() -> new ResourceNotFoundException("Postulacion", postulacionId));
-
-        if (request.estado() == EstadoPostulacion.ACEPTADO) {
-            long aceptados = postulacionRepository.findByProyectoId(proyectoId)
-                    .stream()
-                    .filter(p -> p.getEstado() == EstadoPostulacion.ACEPTADO)
-                    .count();
-            if (aceptados >= proyecto.getCupos()) {
-                throw new BusinessException("No hay cupos disponibles en este proyecto");
-            }
-
-            if (aceptados + 1 == proyecto.getCupos()) {
-                proyecto.setEstado(WorkflowEstado.EN_DESARROLLO);
-                proyectoRepository.save(proyecto);
-
-                // Guardar log de workflow automático (Corregido 'cambiadoPor' y omitiendo 'fechaCambio' por PrePersist)
-                workflowHistorialRepository.save(WorkflowHistorial.builder()
-                        .proyecto(proyecto).cambiadoPor(usuario)
-                        .estadoAnterior(WorkflowEstado.PENDIENTE).estadoNuevo(WorkflowEstado.EN_DESARROLLO)
-                        .comentario("Convocatoria cerrada automáticamente. Cupos llenos al aceptar postulante.")
-                        .build());
-            }
-        }
-
-        postulacion.setEstado(request.estado());
-        postulacion.setFechaRespuesta(java.time.LocalDateTime.now());
-
-        var saved = postulacionRepository.save(postulacion);
-
-        String mensajeNotif = request.estado() == EstadoPostulacion.ACEPTADO
-                ? "¡Felicitaciones! Tu postulación al proyecto \"" + proyecto.getTitulo() + "\" fue ACEPTADA."
-                : "Tu postulación al proyecto \"" + proyecto.getTitulo() + "\" fue rechazada.";
-
-        notificacionService.crearNotificacion(
-                postulacion.getEstudiante().getUsuario(),
-                "Respuesta a tu postulacion",
-                mensajeNotif,
-                TipoNotificacion.POSTULACION,
-                "/mis-postulaciones"
-        );
-
-        return toPostulacionResponse(saved);
+                .stream().map(this::toPostulacionResponse).toList();
     }
 
     public List<PostulacionResponse> misPostulaciones(String emailEstudiante) {
@@ -276,11 +178,8 @@ public class ProyectoService {
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
         var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
                 .orElseThrow(() -> new BusinessException("Perfil de estudiante no encontrado"));
-
         return postulacionRepository.findByEstudianteIdWithDetails(estudiante.getId())
-                .stream()
-                .map(this::toPostulacionResponse)
-                .toList();
+                .stream().map(this::toPostulacionResponse).toList();
     }
 
     @Transactional
@@ -289,21 +188,17 @@ public class ProyectoService {
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
         var proyecto = proyectoRepository.findById(proyectoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
-
         boolean esAdmin = usuario.getRol().getNombre().equals("ROLE_ADMIN");
         boolean esDuenoMype = false;
-
         if (!esAdmin) {
             var mypeOpcional = mypeRepository.findByUsuarioId(usuario.getId());
             if (mypeOpcional.isPresent()) {
                 esDuenoMype = proyecto.getMype().getId().equals(mypeOpcional.get().getId());
             }
         }
-
         if (!esAdmin && !esDuenoMype) {
-            throw new BusinessException("No tienes permiso para cerrar o eliminar este proyecto", HttpStatus.FORBIDDEN);
+            throw new BusinessException("No tienes permiso para cerrar este proyecto", HttpStatus.FORBIDDEN);
         }
-
         proyecto.setActivo(false);
         return toResponse(proyectoRepository.save(proyecto));
     }
@@ -316,16 +211,13 @@ public class ProyectoService {
                 .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
         var proyecto = proyectoRepository.findById(proyectoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
-
         if (!proyecto.getMype().getId().equals(mype.getId())) {
             throw new BusinessException("No tienes permiso para editar este proyecto", HttpStatus.FORBIDDEN);
         }
-        // Solo se puede editar si aún no tiene estudiantes en desarrollo
         if (proyecto.getEstado() == WorkflowEstado.EN_DESARROLLO ||
                 proyecto.getEstado() == WorkflowEstado.COMPLETADO) {
             throw new BusinessException("No puedes editar un proyecto que ya está en desarrollo o completado");
         }
-
         proyecto.setTitulo(request.getTitulo());
         proyecto.setDescripcion(request.getDescripcion());
         proyecto.setObjetivo(request.getObjetivo());
@@ -335,7 +227,6 @@ public class ProyectoService {
         proyecto.setCupos(request.getCupos());
         proyecto.setFechaInicio(request.getFechaInicio());
         proyecto.setFechaLimite(request.getFechaLimite());
-
         return toResponse(proyectoRepository.save(proyecto));
     }
 
@@ -347,39 +238,228 @@ public class ProyectoService {
                 .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
         var proyecto = proyectoRepository.findById(proyectoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
-
         if (!proyecto.getMype().getId().equals(mype.getId())) {
             throw new BusinessException("No tienes permiso para eliminar este proyecto", HttpStatus.FORBIDDEN);
         }
         if (proyecto.getEstado() == WorkflowEstado.EN_DESARROLLO) {
             throw new BusinessException("No puedes eliminar un proyecto que ya tiene estudiantes asignados");
         }
-
         proyectoRepository.delete(proyecto);
     }
 
-    // ======================================================================================
-    // 👑 MÉTODOS NUEVOS: DOMINIO ADMINISTRADOR (FASE 1)
-    // ======================================================================================
+    // ══════════════════════════════════════════════════════════════
+    // FLUJO TRILATERAL
+    // ══════════════════════════════════════════════════════════════
+    @Transactional
+    public PostulacionResponse cambiarEstadoPostulacion(
+            Long proyectoId, Long postulacionId,
+            CambiarEstadoPostulacionRequest request, String emailGestor) {
+
+        var usuario = usuarioRepository.findByEmailWithRole(emailGestor)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        validarPermisoGestionPostulaciones(usuario, proyecto);
+
+        var postulacion = postulacionRepository.findById(postulacionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Postulacion", postulacionId));
+
+        boolean esAdmin = usuario.getRol().getNombre().equals("ROLE_ADMIN");
+        EstadoPostulacion estadoActual = postulacion.getEstado();
+        EstadoPostulacion nuevoEstado = request.estado();
+
+        // ── ADMIN preselecciona ───────────────────────────────────
+        if (esAdmin && nuevoEstado == EstadoPostulacion.PRESELECCIONADO) {
+            if (estadoActual != EstadoPostulacion.PENDIENTE) {
+                throw new BusinessException("Solo se puede preseleccionar postulaciones en estado PENDIENTE");
+            }
+            postulacion.setEstado(EstadoPostulacion.PRESELECCIONADO);
+            postulacion.setFechaLimiteConfirmacion(LocalDateTime.now().plusHours(HORAS_PLAZO));
+            postulacion.setFechaRespuesta(LocalDateTime.now());
+            postulacionRepository.save(postulacion);
+
+            // Notificar a la MYPE para que valide
+            notificacionService.crearNotificacion(
+                    proyecto.getMype().getUsuario(),
+                    "El admin seleccionó un estudiante para tu proyecto",
+                    "El administrador preseleccionó a " + postulacion.getEstudiante().getUsuario().getNombre()
+                            + " para \"" + proyecto.getTitulo() + "\". Tienes " + HORAS_PLAZO
+                            + "h para validar o rechazar esta selección.",
+                    TipoNotificacion.POSTULACION,
+                    "/dashboard/postulaciones/" + proyecto.getId()
+            );
+            return toPostulacionResponse(postulacion);
+        }
+
+        // ── ADMIN rechaza directamente ────────────────────────────
+        if (esAdmin && nuevoEstado == EstadoPostulacion.RECHAZADO) {
+            if (estadoActual != EstadoPostulacion.PENDIENTE) {
+                throw new BusinessException("Solo se pueden rechazar postulaciones en estado PENDIENTE");
+            }
+            postulacion.setEstado(EstadoPostulacion.RECHAZADO);
+            postulacion.setFechaLimiteConfirmacion(null);
+            postulacion.setFechaRespuesta(LocalDateTime.now());
+            postulacionRepository.save(postulacion);
+
+            notificacionService.crearNotificacion(
+                    postulacion.getEstudiante().getUsuario(),
+                    "Tu postulación fue revisada",
+                    "Tu postulación al proyecto \"" + proyecto.getTitulo() + "\" no fue seleccionada en esta ocasión.",
+                    TipoNotificacion.POSTULACION,
+                    "/mis-postulaciones"
+            );
+            return toPostulacionResponse(postulacion);
+        }
+
+        // ── MYPE valida la selección del admin ────────────────────
+        if (!esAdmin && nuevoEstado == EstadoPostulacion.VALIDADO_MYPE) {
+            if (estadoActual != EstadoPostulacion.PRESELECCIONADO) {
+                throw new BusinessException("Solo se puede validar una postulación que esté PRESELECCIONADA");
+            }
+            postulacion.setEstado(EstadoPostulacion.VALIDADO_MYPE);
+            // Reiniciar el plazo: ahora el estudiante tiene 12h para confirmar
+            postulacion.setFechaLimiteConfirmacion(LocalDateTime.now().plusHours(HORAS_PLAZO));
+            postulacion.setFechaRespuesta(LocalDateTime.now());
+            postulacionRepository.save(postulacion);
+
+            // Notificar al estudiante
+            notificacionService.crearNotificacion(
+                    postulacion.getEstudiante().getUsuario(),
+                    "¡Fuiste aceptado en un proyecto!",
+                    "La empresa \"" + proyecto.getMype().getNombreComercial()
+                            + "\" aceptó tu postulación al proyecto \""
+                            + proyecto.getTitulo() + "\". Tienes " + HORAS_PLAZO
+                            + "h para confirmar o rechazar.",
+                    TipoNotificacion.POSTULACION,
+                    "/mis-postulaciones"
+            );
+            return toPostulacionResponse(postulacion);
+        }
+
+        // ── MYPE rechaza la selección del admin ───────────────────
+        if (!esAdmin && nuevoEstado == EstadoPostulacion.RECHAZADO) {
+            if (estadoActual != EstadoPostulacion.PRESELECCIONADO) {
+                throw new BusinessException("Solo se puede rechazar una postulación PRESELECCIONADA desde la MYPE");
+            }
+            postulacion.setEstado(EstadoPostulacion.RECHAZADO);
+            postulacion.setFechaLimiteConfirmacion(null);
+            postulacion.setFechaRespuesta(LocalDateTime.now());
+            postulacionRepository.save(postulacion);
+
+            // Notificar al admin para que seleccione otro
+            notificacionService.crearNotificacion(
+                    usuario, // el usuario admin — buscamos al admin del sistema
+                    "La MYPE rechazó tu selección",
+                    "La MYPE \"" + proyecto.getMype().getNombreComercial()
+                            + "\" rechazó al estudiante preseleccionado para \""
+                            + proyecto.getTitulo() + "\". Por favor selecciona otro postulante.",
+                    TipoNotificacion.POSTULACION,
+                    "/admin/proyectos/" + proyecto.getId() + "/postulaciones"
+            );
+            return toPostulacionResponse(postulacion);
+        }
+
+        throw new BusinessException("Transición de estado no permitida: "
+                + estadoActual + " → " + nuevoEstado);
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // NUEVO: Confirmación del estudiante
+    // ══════════════════════════════════════════════════════════════
+    @Transactional
+    public PostulacionResponse confirmarPostulacion(Long postulacionId, boolean confirmar, String emailEstudiante) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil de estudiante no encontrado"));
+
+        var postulacion = postulacionRepository.findById(postulacionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Postulacion", postulacionId));
+
+        // Verificar que la postulación pertenece al estudiante autenticado
+        if (!postulacion.getEstudiante().getId().equals(estudiante.getId())) {
+            throw new BusinessException("No tienes permiso para responder esta postulación", HttpStatus.FORBIDDEN);
+        }
+
+        if (postulacion.getEstado() != EstadoPostulacion.VALIDADO_MYPE) {
+            throw new BusinessException("Solo puedes confirmar postulaciones en estado VALIDADO_MYPE");
+        }
+
+        var proyecto = postulacion.getProyecto();
+
+        if (confirmar) {
+            // ── Estudiante acepta ─────────────────────────────────
+            postulacion.setEstado(EstadoPostulacion.CONFIRMADO);
+            postulacion.setFechaLimiteConfirmacion(null);
+            postulacion.setFechaRespuesta(LocalDateTime.now());
+            postulacionRepository.save(postulacion);
+
+            // Contar cuántos estudiantes ya están CONFIRMADOS en este proyecto
+            long confirmados = postulacionRepository.findByProyectoId(proyecto.getId())
+                    .stream()
+                    .filter(p -> p.getEstado() == EstadoPostulacion.CONFIRMADO)
+                    .count();
+
+            // Si los cupos están llenos, pasar el proyecto a EN_DESARROLLO
+            if (confirmados >= proyecto.getCupos()) {
+                WorkflowEstado estadoAnterior = proyecto.getEstado();
+                proyecto.setEstado(WorkflowEstado.EN_DESARROLLO);
+                proyectoRepository.save(proyecto);
+
+                workflowHistorialRepository.save(WorkflowHistorial.builder()
+                        .proyecto(proyecto).cambiadoPor(usuario)
+                        .estadoAnterior(estadoAnterior).estadoNuevo(WorkflowEstado.EN_DESARROLLO)
+                        .comentario("Cupos cubiertos. Estudiante " + usuario.getNombre() + " confirmó su participación.")
+                        .build());
+            }
+
+            // Notificar a la MYPE que el estudiante aceptó
+            notificacionService.crearNotificacion(
+                    proyecto.getMype().getUsuario(),
+                    "¡Estudiante confirmado!",
+                    usuario.getNombre() + " confirmó su participación en \""
+                            + proyecto.getTitulo() + "\".",
+                    TipoNotificacion.POSTULACION,
+                    "/dashboard/postulaciones/" + proyecto.getId()
+            );
+
+        } else {
+            // ── Estudiante rechaza ────────────────────────────────
+            postulacion.setEstado(EstadoPostulacion.RECHAZADO);
+            postulacion.setFechaLimiteConfirmacion(null);
+            postulacion.setFechaRespuesta(LocalDateTime.now());
+            postulacionRepository.save(postulacion);
+
+            // Notificar a la MYPE
+            notificacionService.crearNotificacion(
+                    proyecto.getMype().getUsuario(),
+                    "El estudiante rechazó la oferta",
+                    usuario.getNombre() + " rechazó la oferta para \""
+                            + proyecto.getTitulo() + "\". El administrador deberá seleccionar otro postulante.",
+                    TipoNotificacion.POSTULACION,
+                    "/dashboard/postulaciones/" + proyecto.getId()
+            );
+        }
+
+        return toPostulacionResponse(postulacion);
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // MÉTODOS ADMIN
+    // ══════════════════════════════════════════════════════════════
 
     @Transactional(readOnly = true)
     public List<ProyectoAdminResponse> listarParaAdmin(String emailAdmin) {
         validarRolAdmin(emailAdmin);
-
         return proyectoRepository.findAllConMype().stream().map(p -> {
-            long aceptados = postulacionRepository.findByProyectoId(p.getId())
+            long confirmados = postulacionRepository.findByProyectoId(p.getId())
                     .stream()
-                    .filter(post -> post.getEstado() == EstadoPostulacion.ACEPTADO)
+                    .filter(post -> post.getEstado() == EstadoPostulacion.CONFIRMADO)
                     .count();
-
             return new ProyectoAdminResponse(
-                    p.getId(),
-                    p.getTitulo(),
-                    p.getAreaSistemas(),
-                    p.getEstado(),
-                    p.getCupos(),
-                    aceptados,
-                    p.getFechaCreacion(),
+                    p.getId(), p.getTitulo(), p.getAreaSistemas(), p.getEstado(),
+                    p.getCupos(), confirmados, p.getFechaCreacion(),
                     p.getMype() != null ? p.getMype().getNombreComercial() : "Sin MYPE",
                     p.getMype() != null ? p.getMype().getId() : null,
                     p.getDelegarGestionAdmin()
@@ -392,11 +472,8 @@ public class ProyectoService {
         var admin = validarRolAdmin(emailAdmin);
         var proyecto = proyectoRepository.findById(proyectoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
-
         proyecto.setDelegarGestionAdmin(true);
         proyectoRepository.save(proyecto);
-
-        // Corregido 'cambiadoPor'
         workflowHistorialRepository.save(WorkflowHistorial.builder()
                 .proyecto(proyecto).cambiadoPor(admin)
                 .estadoAnterior(proyecto.getEstado()).estadoNuevo(proyecto.getEstado())
@@ -411,39 +488,50 @@ public class ProyectoService {
                 .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
         var postulacion = postulacionRepository.findById(postulacionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Postulacion", postulacionId));
-
         WorkflowEstado estadoAnterior = proyecto.getEstado();
-
-        // 1. Expulsar al alumno
         postulacion.setEstado(EstadoPostulacion.RECHAZADO);
         postulacionRepository.save(postulacion);
-
-        // 2. Retroceder el proyecto a la bolsa pública
         proyecto.setEstado(WorkflowEstado.PENDIENTE);
         proyectoRepository.save(proyecto);
-
-        // 3. Registrar en la caja negra (Auditoría) - Corregido 'cambiadoPor'
         workflowHistorialRepository.save(WorkflowHistorial.builder()
                 .proyecto(proyecto).cambiadoPor(admin)
                 .estadoAnterior(estadoAnterior).estadoNuevo(WorkflowEstado.PENDIENTE)
                 .comentario("Abandono reportado. Estudiante expulsado y proyecto reabierto.")
                 .build());
-
-        // 4. Notificar a los otros alumnos
         postulacionRepository.findByProyectoId(proyectoId).forEach(p -> {
             if (!p.getId().equals(postulacionId)) {
                 notificacionService.crearNotificacion(
                         p.getEstudiante().getUsuario(),
                         "¡Cupo liberado!",
                         "Se ha liberado un cupo de emergencia para: " + proyecto.getTitulo() + ". ¡Vuelve a postular!",
-                        TipoNotificacion.PROYECTO, // Corregido a PROYECTO
+                        TipoNotificacion.PROYECTO,
                         "/proyectos/" + proyecto.getId()
                 );
             }
         });
     }
 
-    // Helper privado para seguridad
+    // ══════════════════════════════════════════════════════════════
+    // HELPERS PRIVADOS
+    // ══════════════════════════════════════════════════════════════
+
+    private void validarPermisoGestionPostulaciones(Usuario usuarioLogueado, Proyecto proyecto) {
+        boolean esAdmin = usuarioLogueado.getRol().getNombre().equals("ROLE_ADMIN");
+        boolean esDuenoMype = false;
+        if (!esAdmin) {
+            var mypeOpcional = mypeRepository.findByUsuarioId(usuarioLogueado.getId());
+            if (mypeOpcional.isPresent()) {
+                esDuenoMype = proyecto.getMype().getId().equals(mypeOpcional.get().getId());
+            }
+        }
+        if (!esAdmin && !esDuenoMype) {
+            throw new BusinessException(
+                    "No tienes permiso para gestionar las postulaciones de este proyecto",
+                    HttpStatus.FORBIDDEN
+            );
+        }
+    }
+
     private Usuario validarRolAdmin(String email) {
         var usuario = usuarioRepository.findByEmailWithRole(email)
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
@@ -453,9 +541,9 @@ public class ProyectoService {
         return usuario;
     }
 
-    // ======================================================================================
+    // ══════════════════════════════════════════════════════════════
     // MAPPERS
-    // ======================================================================================
+    // ══════════════════════════════════════════════════════════════
 
     private ProyectoResponse toResponse(Proyecto p) {
         return new ProyectoResponse(
@@ -472,7 +560,9 @@ public class ProyectoService {
         return new PostulacionResponse(
                 p.getId(), p.getProyecto().getId(), p.getProyecto().getTitulo(),
                 p.getEstudiante().getId(), p.getEstudiante().getUsuario().getNombre(),
-                p.getEstado(), p.getMensajePostulacion(), p.getFechaPostulacion()
+                p.getEstado(), p.getMensajePostulacion(), p.getFechaPostulacion(),
+                p.getEstudiante().getCvUrl(),
+                p.getFechaLimiteConfirmacion()
         );
     }
 }

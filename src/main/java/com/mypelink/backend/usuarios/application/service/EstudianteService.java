@@ -1,5 +1,6 @@
 package com.mypelink.backend.usuarios.application.service;
 
+import com.mypelink.backend.shared.infrastructure.aws.S3Service;
 import com.mypelink.backend.shared.infrastructure.exception.ResourceNotFoundException;
 import com.mypelink.backend.usuarios.application.dto.EstudianteProfileResponse;
 import com.mypelink.backend.usuarios.application.dto.UpdateEstudianteRequest;
@@ -10,6 +11,7 @@ import com.mypelink.backend.usuarios.domain.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @RequiredArgsConstructor
@@ -17,12 +19,13 @@ public class EstudianteService {
 
     private final EstudianteRepository estudianteRepository;
     private final UsuarioRepository usuarioRepository;
+    private final S3Service s3Service; // NUEVO: necesario para subir el CV
 
     @Transactional(readOnly = true)
     public EstudianteProfileResponse getProfile(String email) {
         Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
-        
+
         Estudiante estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Perfil de estudiante no encontrado"));
 
@@ -33,7 +36,7 @@ public class EstudianteService {
     public EstudianteProfileResponse updateProfile(String email, UpdateEstudianteRequest request) {
         Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
-        
+
         Estudiante estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Perfil de estudiante no encontrado"));
 
@@ -45,6 +48,20 @@ public class EstudianteService {
         if (request.universidad() != null) estudiante.setUniversidad(request.universidad());
         if (request.telefono() != null) usuario.setTelefono(request.telefono());
 
+        estudianteRepository.save(estudiante);
+        return mapToProfileResponse(estudiante);
+    }
+
+    @Transactional
+    public EstudianteProfileResponse subirCv(String email, MultipartFile archivo) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
+
+        Estudiante estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Perfil de estudiante no encontrado"));
+
+        String cvUrl = s3Service.subirCvPdf(archivo);
+        estudiante.setCvUrl(cvUrl);
         estudianteRepository.save(estudiante);
 
         return mapToProfileResponse(estudiante);
@@ -64,7 +81,8 @@ public class EstudianteService {
                 estudiante.getBio(),
                 estudiante.getSkills(),
                 estudiante.getPortafolioUrl(),
-                estudiante.getLinkedinUrl()
+                estudiante.getLinkedinUrl(),
+                estudiante.getCvUrl() // NUEVO
         );
     }
 }

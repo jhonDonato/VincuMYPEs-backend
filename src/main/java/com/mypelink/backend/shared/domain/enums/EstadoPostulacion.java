@@ -1,6 +1,16 @@
 package com.mypelink.backend.shared.domain.enums;
 
 public enum EstadoPostulacion {
-    PENDIENTE, ACEPTADO, RECHAZADO, RETIRADO
+    // Estados originales
+    PENDIENTE,
+    RECHAZADO,
+    ACEPTADO,
+    RETIRADO,
+
+    // Estados nuevos
+    PRESELECCIONADO,
+    VALIDADO_MYPE,
+    CONFIRMADO,
+    EXPIRADO
 }
 

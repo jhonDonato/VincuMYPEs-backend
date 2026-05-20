@@ -6,16 +6,15 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
-import com.mypelink.backend.proyectos.application.dto.EditarProyectoRequest;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/proyectos")
@@ -30,8 +29,6 @@ public class ProyectoController {
     public ResponseEntity<Page<ProyectoResponse>> listar(Pageable pageable) {
         return ResponseEntity.ok(proyectoService.listarPublicos(pageable));
     }
-
-    // ✨ CORRECCIÓN: Hemos borrado los 3 métodos de Admin de este archivo porque ya están en AdminProyectoController
 
     @GetMapping("/mis-proyectos")
     @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
@@ -72,15 +69,13 @@ public class ProyectoController {
         return ResponseEntity.ok(proyectoService.publicar(id, userDetails.getUsername()));
     }
 
-    // Vista normal MYPE — solo postulantes que el admin aceptó
     @GetMapping("/{id}/postulaciones/aceptadas")
     @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
     public ResponseEntity<List<PostulacionResponse>> listarAceptadas(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(
-                proyectoService.listarPostulacionesAceptadas(id, userDetails.getUsername())
-        );
+                proyectoService.listarPostulacionesAceptadas(id, userDetails.getUsername()));
     }
 
     @GetMapping("/{id}/postulaciones")
@@ -96,9 +91,7 @@ public class ProyectoController {
     public ResponseEntity<ProyectoResponse> cerrarProyecto(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails userDetails) {
-
-        ProyectoResponse response = proyectoService.cerrarProyecto(id, userDetails.getUsername());
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(proyectoService.cerrarProyecto(id, userDetails.getUsername()));
     }
 
     @PutMapping("/{id}")
@@ -135,5 +128,24 @@ public class ProyectoController {
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(proyectoService.cambiarEstadoPostulacion(
                 id, postulacionId, request, userDetails.getUsername()));
+    }
+
+    // NUEVO ────────────────────────────────────────────────────────
+    // El estudiante confirma o rechaza su oferta.
+    @PatchMapping("/postulaciones/{postulacionId}/confirmar")
+    @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE', 'ESTUDIANTE')")
+    public ResponseEntity<PostulacionResponse> confirmarPostulacion(
+            @PathVariable Long postulacionId,
+            @RequestBody Map<String, Boolean> body,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        Boolean confirmar = body.get("confirmar");
+        if (confirmar == null) {
+            throw new com.mypelink.backend.shared.infrastructure.exception.BusinessException(
+                    "El campo 'confirmar' es requerido (true o false)");
+        }
+
+        return ResponseEntity.ok(proyectoService.confirmarPostulacion(
+                postulacionId, confirmar, userDetails.getUsername()));
     }
 }
