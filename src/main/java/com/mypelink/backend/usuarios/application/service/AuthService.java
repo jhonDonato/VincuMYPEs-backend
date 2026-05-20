@@ -35,7 +35,13 @@ public class AuthService {
     @Transactional
     public AuthResponse registerEstudiante(RegisterEstudianteRequest request) {
         if (usuarioRepository.existsByEmail(request.email())) {
-            throw new BusinessException("El email ya está registrado");
+            throw new BusinessException("El correo electrónico ya está registrado en otra cuenta.");
+        }
+        if (request.dni() != null && usuarioRepository.existsByDni(request.dni())) {
+            throw new BusinessException("Este DNI ya se encuentra registrado.");
+        }
+        if (request.codigoEstudiante() != null && estudianteRepository.existsByCodigoEstudiante(request.codigoEstudiante())) {
+            throw new BusinessException("Este código de estudiante ya ha sido utilizado.");
         }
 
         Role role = roleRepository.findByNombre("ESTUDIANTE")
@@ -45,6 +51,7 @@ public class AuthService {
         Usuario usuario = usuarioRepository.save(Usuario.builder()
                 .nombre(request.nombre())
                 .email(request.email())
+                .dni(request.dni())
                 .password(passwordEncoder.encode(request.password()))
                 .telefono(request.telefono())
                 .rol(role)
@@ -63,10 +70,10 @@ public class AuthService {
     @Transactional
     public AuthResponse registerMype(RegisterMypeRequest request) {
         if (usuarioRepository.existsByEmail(request.email())) {
-            throw new BusinessException("El email ya está registrado");
+            throw new BusinessException("El correo electrónico ya está registrado en otra cuenta.");
         }
         if (request.ruc() != null && mypeRepository.existsByRuc(request.ruc())) {
-            throw new BusinessException("El RUC ya está registrado");
+            throw new BusinessException("Este RUC ya se encuentra registrado.");
         }
 
         Role role = roleRepository.findByNombre("MYPE")

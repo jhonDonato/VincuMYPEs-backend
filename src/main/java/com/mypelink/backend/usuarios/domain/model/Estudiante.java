@@ -53,6 +53,7 @@ public class Estudiante {
     @Column(name = "fecha_registro", nullable = false, updatable = false)
     private LocalDateTime fechaRegistro;
 
+
     @PrePersist
     protected void onCreate() {
         this.fechaRegistro = LocalDateTime.now();
