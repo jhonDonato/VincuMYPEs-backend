@@ -9,6 +9,8 @@ public class RucResponseDto {
 
     private String razon_social;
 
+    private String nombre_comercial;
+
     private String estado;
 
     private String condicion;

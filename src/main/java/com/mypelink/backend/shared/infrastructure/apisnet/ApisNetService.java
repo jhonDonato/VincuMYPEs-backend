@@ -2,6 +2,7 @@ package com.mypelink.backend.shared.infrastructure.apisnet;
 
 import com.mypelink.backend.shared.infrastructure.apisnet.dto.DniResponseDto;
 import com.mypelink.backend.shared.infrastructure.apisnet.dto.RucResponseDto;
+import com.mypelink.backend.shared.infrastructure.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
@@ -62,10 +63,7 @@ public class ApisNetService {
 
             e.printStackTrace();
 
-            throw new RuntimeException(
-                    "Error consultando API DNI: "
-                            + e.getMessage()
-            );
+            throw new BusinessException("Error consultando el RUC. Intenta nuevamente.");
         }
     }
     public RucResponseDto buscarPorRuc(String ruc) {
@@ -92,15 +90,22 @@ public class ApisNetService {
                             RucResponseDto.class
                     );
 
-            return response.getBody();
+            RucResponseDto dto = response.getBody();
+
+            if (dto != null && !"ACTIVO".equalsIgnoreCase(dto.getEstado())) {
+                throw new RuntimeException(
+                        "Solo se permiten empresas con estado ACTIVO."
+                );
+            }
+
+            return dto;
 
         } catch (Exception e) {
 
             e.printStackTrace();
 
-            throw new RuntimeException(
-                    "Error consultando API RUC: "
-                            + e.getMessage()
+            throw new BusinessException(
+                    "Solo se permiten empresas con estado ACTIVO."
             );
         }
     }
