@@ -23,7 +23,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -39,7 +38,6 @@ public class ProyectoService {
     private final NotificacionService notificacionService;
     private final WorkflowHistorialRepository workflowHistorialRepository;
 
-    // Plazo fijo de 12 horas para cada etapa del flujo trilateral
     private static final int HORAS_PLAZO = 12;
 
     // ══════════════════════════════════════════════════════════════
@@ -250,6 +248,7 @@ public class ProyectoService {
     // ══════════════════════════════════════════════════════════════
     // FLUJO TRILATERAL
     // ══════════════════════════════════════════════════════════════
+
     @Transactional
     public PostulacionResponse cambiarEstadoPostulacion(
             Long proyectoId, Long postulacionId,
@@ -274,12 +273,31 @@ public class ProyectoService {
             if (estadoActual != EstadoPostulacion.PENDIENTE) {
                 throw new BusinessException("Solo se puede preseleccionar postulaciones en estado PENDIENTE");
             }
+
+            // CORRECCIÓN 1: Verificar que aún hay cupos disponibles antes de preseleccionar
+            long yaConfirmados = postulacionRepository.findByProyectoId(proyectoId)
+                    .stream()
+                    .filter(p -> p.getEstado() == EstadoPostulacion.CONFIRMADO)
+                    .count();
+
+            long yaEnProceso = postulacionRepository.findByProyectoId(proyectoId)
+                    .stream()
+                    .filter(p -> p.getEstado() == EstadoPostulacion.PRESELECCIONADO
+                            || p.getEstado() == EstadoPostulacion.VALIDADO_MYPE)
+                    .count();
+
+            if (yaConfirmados + yaEnProceso >= proyecto.getCupos()) {
+                throw new BusinessException(
+                        "No puedes preseleccionar más estudiantes. Ya hay "
+                                + proyecto.getCupos() + " cupo(s) cubiertos o en proceso de confirmación."
+                );
+            }
+
             postulacion.setEstado(EstadoPostulacion.PRESELECCIONADO);
             postulacion.setFechaLimiteConfirmacion(LocalDateTime.now().plusHours(HORAS_PLAZO));
             postulacion.setFechaRespuesta(LocalDateTime.now());
             postulacionRepository.save(postulacion);
 
-            // Notificar a la MYPE para que valide
             notificacionService.crearNotificacion(
                     proyecto.getMype().getUsuario(),
                     "El admin seleccionó un estudiante para tu proyecto",
@@ -318,12 +336,10 @@ public class ProyectoService {
                 throw new BusinessException("Solo se puede validar una postulación que esté PRESELECCIONADA");
             }
             postulacion.setEstado(EstadoPostulacion.VALIDADO_MYPE);
-            // Reiniciar el plazo: ahora el estudiante tiene 12h para confirmar
             postulacion.setFechaLimiteConfirmacion(LocalDateTime.now().plusHours(HORAS_PLAZO));
             postulacion.setFechaRespuesta(LocalDateTime.now());
             postulacionRepository.save(postulacion);
 
-            // Notificar al estudiante
             notificacionService.crearNotificacion(
                     postulacion.getEstudiante().getUsuario(),
                     "¡Fuiste aceptado en un proyecto!",
@@ -347,9 +363,8 @@ public class ProyectoService {
             postulacion.setFechaRespuesta(LocalDateTime.now());
             postulacionRepository.save(postulacion);
 
-            // Notificar al admin para que seleccione otro
             notificacionService.crearNotificacion(
-                    usuario, // el usuario admin — buscamos al admin del sistema
+                    usuario,
                     "La MYPE rechazó tu selección",
                     "La MYPE \"" + proyecto.getMype().getNombreComercial()
                             + "\" rechazó al estudiante preseleccionado para \""
@@ -365,28 +380,53 @@ public class ProyectoService {
     }
 
     // ══════════════════════════════════════════════════════════════
-    // NUEVO: Confirmación del estudiante
+    // CONFIRMACIÓN DEL ESTUDIANTE
     // ══════════════════════════════════════════════════════════════
+
     @Transactional
     public PostulacionResponse confirmarPostulacion(Long postulacionId, boolean confirmar, String emailEstudiante) {
         var usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
         var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
                 .orElseThrow(() -> new BusinessException("Perfil de estudiante no encontrado"));
-
         var postulacion = postulacionRepository.findById(postulacionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Postulacion", postulacionId));
 
-        // Verificar que la postulación pertenece al estudiante autenticado
         if (!postulacion.getEstudiante().getId().equals(estudiante.getId())) {
             throw new BusinessException("No tienes permiso para responder esta postulación", HttpStatus.FORBIDDEN);
         }
-
         if (postulacion.getEstado() != EstadoPostulacion.VALIDADO_MYPE) {
             throw new BusinessException("Solo puedes confirmar postulaciones en estado VALIDADO_MYPE");
         }
 
         var proyecto = postulacion.getProyecto();
+
+        // CORRECCIÓN 2: Verificar que los cupos siguen disponibles al momento de confirmar
+        // (otro estudiante pudo haber confirmado antes en proyectos con múltiples cupos)
+        long yaConfirmados = postulacionRepository.findByProyectoId(proyecto.getId())
+                .stream()
+                .filter(p -> p.getEstado() == EstadoPostulacion.CONFIRMADO)
+                .count();
+
+        if (yaConfirmados >= proyecto.getCupos()) {
+            // Los cupos ya se llenaron mientras esperaba — marcar como expirado
+            postulacion.setEstado(EstadoPostulacion.EXPIRADO);
+            postulacion.setFechaLimiteConfirmacion(null);
+            postulacion.setFechaRespuesta(LocalDateTime.now());
+            postulacionRepository.save(postulacion);
+
+            notificacionService.crearNotificacion(
+                    postulacion.getEstudiante().getUsuario(),
+                    "Los cupos ya fueron cubiertos",
+                    "Lo sentimos, otro estudiante confirmó antes que tú y los cupos del proyecto \""
+                            + proyecto.getTitulo() + "\" se llenaron.",
+                    TipoNotificacion.POSTULACION,
+                    "/mis-postulaciones"
+            );
+            throw new BusinessException(
+                    "Lo sentimos, los cupos de este proyecto ya fueron cubiertos por otros estudiantes."
+            );
+        }
 
         if (confirmar) {
             // ── Estudiante acepta ─────────────────────────────────
@@ -395,14 +435,13 @@ public class ProyectoService {
             postulacion.setFechaRespuesta(LocalDateTime.now());
             postulacionRepository.save(postulacion);
 
-            // Contar cuántos estudiantes ya están CONFIRMADOS en este proyecto
-            long confirmados = postulacionRepository.findByProyectoId(proyecto.getId())
+            // Recontar confirmados incluyendo el que acaba de confirmar
+            long confirmadosActualizados = postulacionRepository.findByProyectoId(proyecto.getId())
                     .stream()
                     .filter(p -> p.getEstado() == EstadoPostulacion.CONFIRMADO)
                     .count();
 
-            // Si los cupos están llenos, pasar el proyecto a EN_DESARROLLO
-            if (confirmados >= proyecto.getCupos()) {
+            if (confirmadosActualizados >= proyecto.getCupos()) {
                 WorkflowEstado estadoAnterior = proyecto.getEstado();
                 proyecto.setEstado(WorkflowEstado.EN_DESARROLLO);
                 proyectoRepository.save(proyecto);
@@ -410,8 +449,33 @@ public class ProyectoService {
                 workflowHistorialRepository.save(WorkflowHistorial.builder()
                         .proyecto(proyecto).cambiadoPor(usuario)
                         .estadoAnterior(estadoAnterior).estadoNuevo(WorkflowEstado.EN_DESARROLLO)
-                        .comentario("Cupos cubiertos. Estudiante " + usuario.getNombre() + " confirmó su participación.")
+                        .comentario("Cupos cubiertos. Estudiante " + usuario.getNombre() + " confirmó.")
                         .build());
+
+                // CORRECCIÓN 3: Rechazar automáticamente a todos los que quedaron fuera
+                List<EstadoPostulacion> estadosActivos = List.of(
+                        EstadoPostulacion.PENDIENTE,
+                        EstadoPostulacion.PRESELECCIONADO,
+                        EstadoPostulacion.VALIDADO_MYPE
+                );
+
+                postulacionRepository.findByProyectoId(proyecto.getId()).stream()
+                        .filter(p -> estadosActivos.contains(p.getEstado()))
+                        .forEach(p -> {
+                            p.setEstado(EstadoPostulacion.RECHAZADO);
+                            p.setFechaLimiteConfirmacion(null);
+                            p.setFechaRespuesta(LocalDateTime.now());
+                            postulacionRepository.save(p);
+
+                            notificacionService.crearNotificacion(
+                                    p.getEstudiante().getUsuario(),
+                                    "Los cupos del proyecto se llenaron",
+                                    "Lo sentimos, los cupos del proyecto \"" + proyecto.getTitulo()
+                                            + "\" ya fueron cubiertos. ¡Sigue postulando a otros proyectos!",
+                                    TipoNotificacion.POSTULACION,
+                                    "/mis-postulaciones"
+                            );
+                        });
             }
 
             // Notificar a la MYPE que el estudiante aceptó
@@ -431,7 +495,6 @@ public class ProyectoService {
             postulacion.setFechaRespuesta(LocalDateTime.now());
             postulacionRepository.save(postulacion);
 
-            // Notificar a la MYPE
             notificacionService.crearNotificacion(
                     proyecto.getMype().getUsuario(),
                     "El estudiante rechazó la oferta",
