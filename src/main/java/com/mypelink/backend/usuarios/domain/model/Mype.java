@@ -6,11 +6,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "mypes")
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
+@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class Mype {
 
     @Id
@@ -41,6 +37,26 @@ public class Mype {
 
     @Column(name = "email_contacto", length = 150)
     private String emailContacto;
+
+    // ── Nuevos campos de perfil ────────────────────────────────
+    @Column(columnDefinition = "TEXT")
+    private String descripcion;
+
+    @Column(name = "sitio_web", length = 255)
+    private String sitioWeb;
+
+    @Column(length = 150)
+    private String instagram;
+
+    @Column(length = 150)
+    private String facebook;
+
+    @Column(length = 150)
+    private String tiktok;
+
+    @Column(length = 20)
+    private String whatsapp;
+    // ──────────────────────────────────────────────────────────
 
     @Column(nullable = false)
     private Boolean activo;
