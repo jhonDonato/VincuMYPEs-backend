@@ -32,5 +32,6 @@ build/
 ### VS Code ###
 .vscode/
 application-local.properties
+application.properties
 .env
 .fake
