@@ -1,13 +1,18 @@
 package com.mypelink.backend.usuarios.application.service;
 
 import com.mypelink.backend.shared.infrastructure.exception.BusinessException;
+import com.mypelink.backend.shared.infrastructure.jwt.JwtService;
 import com.mypelink.backend.usuarios.application.dto.*;
 import com.mypelink.backend.usuarios.domain.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.User;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -15,6 +20,7 @@ public class UsuarioService {
 
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;  // ← NUEVO
 
     @Transactional
     public UsuarioResponse actualizarInfo(String email, ActualizarInfoRequest request) {
@@ -51,7 +57,7 @@ public class UsuarioService {
     }
 
     @Transactional
-    public UsuarioResponse cambiarEmail(String emailActual, CambiarEmailRequest request) {
+    public CambiarEmailResponse cambiarEmail(String emailActual, CambiarEmailRequest request) {
         var usuario = usuarioRepository.findByEmailWithRole(emailActual)
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
 
@@ -65,9 +71,22 @@ public class UsuarioService {
         usuario.setEmail(request.emailNuevo());
         usuarioRepository.save(usuario);
 
-        return new UsuarioResponse(usuario.getId(), usuario.getNombre(),
-                usuario.getEmail(), usuario.getTelefono(),
-                usuario.getFotoPerfil(), usuario.getRol().getNombre());
+        // Generar nuevo token con el email actualizado
+        // Construimos un UserDetails temporal con el nuevo email
+        var userDetails = User.builder()
+                .username(usuario.getEmail())
+                .password(usuario.getPassword())
+                .authorities(List.of(new SimpleGrantedAuthority(usuario.getRol().getNombre())))
+                .build();
+
+        String nuevoToken = jwtService.generateToken(userDetails, Map.of());
+
+        return new CambiarEmailResponse(
+                new UsuarioResponse(usuario.getId(), usuario.getNombre(),
+                        usuario.getEmail(), usuario.getTelefono(),
+                        usuario.getFotoPerfil(), usuario.getRol().getNombre()),
+                nuevoToken
+        );
     }
 
     @Transactional

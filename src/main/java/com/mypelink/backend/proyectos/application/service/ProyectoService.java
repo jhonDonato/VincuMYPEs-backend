@@ -705,16 +705,16 @@ public class ProyectoService {
             throw new BusinessException("No tienes permiso para editar este perfil", HttpStatus.FORBIDDEN);
         }
 
-        if (request.rubro()         != null) mype.setRubro(request.rubro());
-        if (request.descripcion()   != null) mype.setDescripcion(request.descripcion());
-        if (request.sitioWeb()      != null) mype.setSitioWeb(request.sitioWeb());
-        if (request.instagram()     != null) mype.setInstagram(request.instagram());
-        if (request.facebook()      != null) mype.setFacebook(request.facebook());
-        if (request.tiktok()        != null) mype.setTiktok(request.tiktok());
-        if (request.whatsapp()      != null) mype.setWhatsapp(request.whatsapp());
-        if (request.direccion()     != null) mype.setDireccion(request.direccion());
-        if (request.telefono()      != null) mype.setTelefono(request.telefono());
-        if (request.emailContacto() != null) mype.setEmailContacto(request.emailContacto());
+        if (request.rubro()         != null) mype.setRubro(request.rubro().isBlank() ? null : request.rubro());
+        if (request.descripcion()   != null) mype.setDescripcion(request.descripcion().isBlank() ? null : request.descripcion());
+        if (request.sitioWeb()      != null) mype.setSitioWeb(request.sitioWeb().isBlank() ? null : request.sitioWeb());
+        if (request.instagram()     != null) mype.setInstagram(request.instagram().isBlank() ? null : request.instagram());
+        if (request.facebook()      != null) mype.setFacebook(request.facebook().isBlank() ? null : request.facebook());
+        if (request.tiktok()        != null) mype.setTiktok(request.tiktok().isBlank() ? null : request.tiktok());
+        if (request.whatsapp()      != null) mype.setWhatsapp(request.whatsapp().isBlank() ? null : request.whatsapp());
+        if (request.direccion()     != null) mype.setDireccion(request.direccion().isBlank() ? null : request.direccion());
+        if (request.telefono()      != null) mype.setTelefono(request.telefono().isBlank() ? null : request.telefono());
+        if (request.emailContacto() != null) mype.setEmailContacto(request.emailContacto().isBlank() ? null : request.emailContacto());
 
         mypeRepository.save(mype);
         return obtenerPerfilMype(mypeId, emailMype);

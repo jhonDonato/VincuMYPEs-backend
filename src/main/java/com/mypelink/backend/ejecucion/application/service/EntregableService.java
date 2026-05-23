@@ -47,7 +47,7 @@ public class EntregableService {
 
         boolean postulacionAceptada = postulacionRepository
                 .findByProyectoIdAndEstudianteId(proyectoId, estudiante.getId())
-                .map(p -> p.getEstado() == EstadoPostulacion.ACEPTADO)
+                .map(p -> p.getEstado() == EstadoPostulacion.CONFIRMADO)
                 .orElse(false);
 
         if (!postulacionAceptada) {

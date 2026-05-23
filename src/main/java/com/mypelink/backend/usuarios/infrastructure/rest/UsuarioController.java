@@ -52,7 +52,7 @@ public class UsuarioController {
 
     // Cambiar email
     @PatchMapping("/me/email")
-    public ResponseEntity<UsuarioResponse> cambiarEmail(
+    public ResponseEntity<CambiarEmailResponse> cambiarEmail(
             @RequestBody CambiarEmailRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(usuarioService.cambiarEmail(userDetails.getUsername(), request));
