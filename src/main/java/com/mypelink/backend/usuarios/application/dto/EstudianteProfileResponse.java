@@ -1,5 +1,7 @@
 package com.mypelink.backend.usuarios.application.dto;
 
+import java.math.BigDecimal;
+
 public record EstudianteProfileResponse(
         Long id,
         String nombre,
@@ -13,5 +15,13 @@ public record EstudianteProfileResponse(
         String skills,
         String portafolioUrl,
         String linkedinUrl,
-        String cvUrl
+        String cvUrl,
+
+        // 📍 NUEVOS CAMPOS DE UBICACIÓN
+        String ciudad,
+        String pais,
+        String sector,
+        String barrio,
+        BigDecimal lat,
+        BigDecimal lng
 ) {}

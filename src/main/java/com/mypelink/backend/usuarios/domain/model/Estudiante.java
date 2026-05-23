@@ -3,6 +3,7 @@ package com.mypelink.backend.usuarios.domain.model;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 
 @Entity
 @Table(name = "estudiantes")
@@ -52,6 +53,26 @@ public class Estudiante {
 
     @Column(name = "fecha_registro", nullable = false, updatable = false)
     private LocalDateTime fechaRegistro;
+
+    // ========== NUEVOS CAMPOS DE UBICACIÓN ==========
+
+    @Column(length = 100)
+    private String ciudad;
+
+    @Column(length = 100)
+    private String pais;
+
+    @Column(length = 100)
+    private String sector;  // Distrito o sector
+
+    @Column(length = 100)
+    private String barrio;
+
+    @Column(precision = 10, scale = 8)
+    private BigDecimal lat;
+
+    @Column(precision = 11, scale = 8)
+    private BigDecimal lng;
 
 
     @PrePersist

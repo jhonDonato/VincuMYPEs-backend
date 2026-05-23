@@ -19,7 +19,7 @@ public class EstudianteService {
 
     private final EstudianteRepository estudianteRepository;
     private final UsuarioRepository usuarioRepository;
-    private final S3Service s3Service; // NUEVO: necesario para subir el CV
+    private final S3Service s3Service;
 
     @Transactional(readOnly = true)
     public EstudianteProfileResponse getProfile(String email) {
@@ -40,6 +40,7 @@ public class EstudianteService {
         Estudiante estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Perfil de estudiante no encontrado"));
 
+        // Actualizar campos existentes
         if (request.bio() != null) estudiante.setBio(request.bio());
         if (request.skills() != null) estudiante.setSkills(request.skills());
         if (request.portafolioUrl() != null) estudiante.setPortafolioUrl(request.portafolioUrl());
@@ -48,7 +49,17 @@ public class EstudianteService {
         if (request.universidad() != null) estudiante.setUniversidad(request.universidad());
         if (request.telefono() != null) usuario.setTelefono(request.telefono());
 
+        // 📍 ACTUALIZAR UBICACIÓN
+        if (request.ciudad() != null) estudiante.setCiudad(request.ciudad());
+        if (request.pais() != null) estudiante.setPais(request.pais());
+        if (request.sector() != null) estudiante.setSector(request.sector());
+        if (request.barrio() != null) estudiante.setBarrio(request.barrio());
+        if (request.lat() != null) estudiante.setLat(request.lat());
+        if (request.lng() != null) estudiante.setLng(request.lng());
+
         estudianteRepository.save(estudiante);
+        usuarioRepository.save(usuario);
+
         return mapToProfileResponse(estudiante);
     }
 
@@ -82,7 +93,14 @@ public class EstudianteService {
                 estudiante.getSkills(),
                 estudiante.getPortafolioUrl(),
                 estudiante.getLinkedinUrl(),
-                estudiante.getCvUrl() // NUEVO
+                estudiante.getCvUrl(),
+                // 📍 MAPEAR UBICACIÓN
+                estudiante.getCiudad(),
+                estudiante.getPais(),
+                estudiante.getSector(),
+                estudiante.getBarrio(),
+                estudiante.getLat(),
+                estudiante.getLng()
         );
     }
 }
