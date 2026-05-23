@@ -32,6 +32,10 @@ public class Usuario {
     @Column(length = 20)
     private String telefono;
 
+    @Column(name = "email_verified")
+    @Builder.Default
+    private Boolean emailVerified = false;
+
     @Column(name = "foto_perfil", length = 255)
     private String fotoPerfil;
 

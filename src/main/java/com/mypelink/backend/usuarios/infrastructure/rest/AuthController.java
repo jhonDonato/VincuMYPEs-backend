@@ -7,9 +7,12 @@ import com.mypelink.backend.usuarios.domain.repository.MypeRepository;
 import com.mypelink.backend.usuarios.domain.repository.UsuarioRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -56,5 +59,26 @@ public class AuthController {
     @GetMapping("/check-codigo")
     public ResponseEntity<Boolean> existsByCodigo(@RequestParam String codigo) {
         return ResponseEntity.ok(estudianteRepository.existsByCodigoEstudiante(codigo));
+    }
+
+    @Value("${app.email.verification.enabled:false}")
+    private boolean verificationEnabled;
+
+    @PostMapping("/verify-email")
+    public ResponseEntity<?> sendVerificationOtp(@RequestParam String email) {
+        if (!verificationEnabled) {
+            return ResponseEntity.ok(Map.of("message", "Verificación desactivada"));
+        }
+        authService.sendVerificationOtp(email);
+        return ResponseEntity.ok(Map.of("message", "Código enviado"));
+    }
+
+    @PostMapping("/confirm-email")
+    public ResponseEntity<?> confirmVerificationOtp(@RequestParam String email, @RequestParam String otp) {
+        if (!verificationEnabled) {
+            return ResponseEntity.ok(Map.of("valid", true));
+        }
+        boolean valid = authService.verifyOtp(email, otp);
+        return ResponseEntity.ok(Map.of("valid", valid));
     }
 }
