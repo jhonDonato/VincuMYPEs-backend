@@ -47,8 +47,8 @@ public class CertificadoService {
         Postulacion postulacion = postulacionRepository.findByProyectoIdAndEstudianteId(request.proyectoId(), request.estudianteId())
                 .orElseThrow(() -> new ResourceNotFoundException("El estudiante no tiene una postulación en este proyecto"));
 
-        if (postulacion.getEstado() != EstadoPostulacion.ACEPTADO) {
-            throw new BusinessException("Solo se pueden emitir certificados a estudiantes con postulación ACEPTADA");
+        if (postulacion.getEstado() != EstadoPostulacion.ACEPTADO && postulacion.getEstado() != EstadoPostulacion.CONFIRMADO) {
+            throw new BusinessException("Solo se pueden emitir certificados a estudiantes con postulación ACEPTADA o CONFIRMADA");
         }
 
         // Verificar si ya existe un certificado

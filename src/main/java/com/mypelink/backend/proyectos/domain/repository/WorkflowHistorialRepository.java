@@ -9,9 +9,9 @@ import java.util.List;
 
 public interface WorkflowHistorialRepository extends JpaRepository<WorkflowHistorial, Long> {
 
-    @Query("SELECT w FROM WorkflowHistorial w JOIN FETCH w.proyecto p JOIN FETCH w.cambiadoPor u ORDER BY w.fechaCambio DESC")
+    @Query("SELECT w FROM WorkflowHistorial w JOIN FETCH w.proyecto p JOIN FETCH w.cambiadoPor u JOIN FETCH u.rol r ORDER BY w.fechaCambio DESC")
     List<WorkflowHistorial> findAllWithDetails();
 
-    @Query("SELECT w FROM WorkflowHistorial w JOIN FETCH w.cambiadoPor u WHERE w.proyecto.id = :proyectoId ORDER BY w.fechaCambio DESC")
+    @Query("SELECT w FROM WorkflowHistorial w JOIN FETCH w.cambiadoPor u JOIN FETCH u.rol r WHERE w.proyecto.id = :proyectoId ORDER BY w.fechaCambio DESC")
     List<WorkflowHistorial> findByProyectoId(@Param("proyectoId") Long proyectoId);
 }
