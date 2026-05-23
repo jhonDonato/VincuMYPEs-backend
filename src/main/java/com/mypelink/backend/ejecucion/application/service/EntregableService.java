@@ -27,127 +27,129 @@ import java.util.List;
 @RequiredArgsConstructor
 public class EntregableService {
 
-    private final EntregableRepository entregableRepository;
-    private final ProyectoRepository proyectoRepository;
-    private final PostulacionRepository postulacionRepository;
-    private final EstudianteRepository estudianteRepository;
-    private final MypeRepository mypeRepository;
-    private final UsuarioRepository usuarioRepository;
-    private final NotificacionService notificacionService;
-    private final S3Service s3Service; // ✨ AÑADIDO
+        private final EntregableRepository entregableRepository;
+        private final ProyectoRepository proyectoRepository;
+        private final PostulacionRepository postulacionRepository;
+        private final EstudianteRepository estudianteRepository;
+        private final MypeRepository mypeRepository;
+        private final UsuarioRepository usuarioRepository;
+        private final NotificacionService notificacionService;
+        private final S3Service s3Service; // ✨ AÑADIDO
 
-    @Transactional
-    public EntregableResponse subir(Long proyectoId, String titulo, String descripcion, MultipartFile archivo, String emailEstudiante) {
-        var usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
-                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
-        var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
-                .orElseThrow(() -> new BusinessException("Perfil de estudiante no encontrado"));
-        var proyecto = proyectoRepository.findById(proyectoId)
-                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+        @Transactional
+        public EntregableResponse subir(Long proyectoId, String titulo, String descripcion, MultipartFile archivo,
+                        String emailEstudiante) {
+                var usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
+                                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+                var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
+                                .orElseThrow(() -> new BusinessException("Perfil de estudiante no encontrado"));
+                var proyecto = proyectoRepository.findById(proyectoId)
+                                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
 
-        boolean postulacionAceptada = postulacionRepository
-                .findByProyectoIdAndEstudianteId(proyectoId, estudiante.getId())
-                .map(p -> p.getEstado() == EstadoPostulacion.ACEPTADO || p.getEstado() == EstadoPostulacion.CONFIRMADO)
-                .orElse(false);
+                boolean postulacionAceptada = postulacionRepository
+                                .findByProyectoIdAndEstudianteId(proyectoId, estudiante.getId())
+                                .map(p -> p.getEstado() == EstadoPostulacion.CONFIRMADO)
+                                .orElse(false);
 
-        if (!postulacionAceptada) {
-            throw new BusinessException("Solo estudiantes aceptados pueden subir entregables");
+                if (!postulacionAceptada) {
+                        throw new BusinessException("Solo estudiantes aceptados pueden subir entregables");
+                }
+
+                String archivoUrl = s3Service.subirEntregablePdf(archivo);
+
+                var entregable = entregableRepository.save(Entregable.builder()
+                                .proyecto(proyecto)
+                                .estudiante(estudiante)
+                                .titulo(titulo)
+                                .descripcion(descripcion)
+                                .archivo(archivoUrl)
+                                .build());
+
+                notificacionService.crearNotificacion(
+                                proyecto.getMype().getUsuario(),
+                                "Nuevo entregable recibido",
+                                "El estudiante " + usuario.getNombre() + " subió un entregable para: "
+                                                + proyecto.getTitulo(),
+                                TipoNotificacion.PROYECTO,
+                                "/dashboard/proyectos/" + proyectoId + "/entregables");
+
+                return toResponse(entregable);
         }
 
-        String archivoUrl = s3Service.subirEntregablePdf(archivo);
+        @Transactional(readOnly = true)
+        public List<EntregableResponse> listarPorProyecto(Long proyectoId, String emailMype) {
+                var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+                var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+                var proyecto = proyectoRepository.findById(proyectoId)
+                                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
 
-        var entregable = entregableRepository.save(Entregable.builder()
-                .proyecto(proyecto)
-                .estudiante(estudiante)
-                .titulo(titulo)
-                .descripcion(descripcion)
-                .archivo(archivoUrl)
-                .build());
+                if (!proyecto.getMype().getId().equals(mype.getId())) {
+                        throw new BusinessException("No tienes permiso para ver estos entregables",
+                                        HttpStatus.FORBIDDEN);
+                }
 
-        notificacionService.crearNotificacion(
-                proyecto.getMype().getUsuario(),
-                "Nuevo entregable recibido",
-                "El estudiante " + usuario.getNombre() + " subió un entregable para: " + proyecto.getTitulo(),
-                TipoNotificacion.PROYECTO,
-                "/dashboard/proyectos/" + proyectoId + "/entregables"
-        );
-
-        return toResponse(entregable);
-    }
-
-    @Transactional(readOnly = true)
-    public List<EntregableResponse> listarPorProyecto(Long proyectoId, String emailMype) {
-        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
-                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
-        var mype = mypeRepository.findByUsuarioId(usuario.getId())
-                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
-        var proyecto = proyectoRepository.findById(proyectoId)
-                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
-
-        if (!proyecto.getMype().getId().equals(mype.getId())) {
-            throw new BusinessException("No tienes permiso para ver estos entregables", HttpStatus.FORBIDDEN);
+                return entregableRepository.findByProyectoIdWithDetails(proyectoId)
+                                .stream().map(this::toResponse).toList();
         }
 
-        return entregableRepository.findByProyectoIdWithDetails(proyectoId)
-                .stream().map(this::toResponse).toList();
-    }
+        @Transactional(readOnly = true)
+        public List<EntregableResponse> misEntregables(String emailEstudiante) {
+                var usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
+                                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+                var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
+                                .orElseThrow(() -> new BusinessException("Perfil de estudiante no encontrado"));
 
-    @Transactional(readOnly = true)
-    public List<EntregableResponse> misEntregables(String emailEstudiante) {
-        var usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
-                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
-        var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
-                .orElseThrow(() -> new BusinessException("Perfil de estudiante no encontrado"));
-
-        return entregableRepository.findByEstudianteIdWithDetails(estudiante.getId())
-                .stream().map(this::toResponse).toList();
-    }
-
-    @Transactional
-    public EntregableResponse revisar(Long proyectoId, Long entregableId,
-                                      RevisarEntregableRequest request, String emailMype) {
-        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
-                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
-        var mype = mypeRepository.findByUsuarioId(usuario.getId())
-                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
-        var proyecto = proyectoRepository.findById(proyectoId)
-                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
-
-        if (!proyecto.getMype().getId().equals(mype.getId())) {
-            throw new BusinessException("No tienes permiso para revisar estos entregables", HttpStatus.FORBIDDEN);
+                return entregableRepository.findByEstudianteIdWithDetails(estudiante.getId())
+                                .stream().map(this::toResponse).toList();
         }
 
-        var entregable = entregableRepository.findById(entregableId)
-                .orElseThrow(() -> new ResourceNotFoundException("Entregable", entregableId));
+        @Transactional
+        public EntregableResponse revisar(Long proyectoId, Long entregableId,
+                        RevisarEntregableRequest request, String emailMype) {
+                var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+                var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+                var proyecto = proyectoRepository.findById(proyectoId)
+                                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
 
-        entregable.setEstado(request.estado());
-        entregable.setObservaciones(request.observaciones());
-        var saved = entregableRepository.save(entregable);
+                if (!proyecto.getMype().getId().equals(mype.getId())) {
+                        throw new BusinessException("No tienes permiso para revisar estos entregables",
+                                        HttpStatus.FORBIDDEN);
+                }
 
-        notificacionService.crearNotificacion(
-                entregable.getEstudiante().getUsuario(),
-                "Tu entregable fue revisado",
-                "Tu entregable \"" + entregable.getTitulo() + "\" fue marcado como " + request.estado().name(),
-                TipoNotificacion.PROYECTO,
-                "/mis-entregables"
-        );
+                var entregable = entregableRepository.findById(entregableId)
+                                .orElseThrow(() -> new ResourceNotFoundException("Entregable", entregableId));
 
-        return toResponse(saved);
-    }
+                entregable.setEstado(request.estado());
+                entregable.setObservaciones(request.observaciones());
+                var saved = entregableRepository.save(entregable);
 
-    private EntregableResponse toResponse(Entregable e) {
-        return new EntregableResponse(
-                e.getId(),
-                e.getProyecto().getId(),
-                e.getProyecto().getTitulo(),
-                e.getEstudiante().getId(),
-                e.getEstudiante().getUsuario().getNombre(),
-                e.getTitulo(),
-                e.getDescripcion(),
-                e.getArchivo(),
-                e.getEstado(),
-                e.getObservaciones(),
-                e.getFechaEntrega()
-        );
-    }
+                notificacionService.crearNotificacion(
+                                entregable.getEstudiante().getUsuario(),
+                                "Tu entregable fue revisado",
+                                "Tu entregable \"" + entregable.getTitulo() + "\" fue marcado como "
+                                                + request.estado().name(),
+                                TipoNotificacion.PROYECTO,
+                                "/mis-entregables");
+
+                return toResponse(saved);
+        }
+
+        private EntregableResponse toResponse(Entregable e) {
+                return new EntregableResponse(
+                                e.getId(),
+                                e.getProyecto().getId(),
+                                e.getProyecto().getTitulo(),
+                                e.getEstudiante().getId(),
+                                e.getEstudiante().getUsuario().getNombre(),
+                                e.getTitulo(),
+                                e.getDescripcion(),
+                                e.getArchivo(),
+                                e.getEstado(),
+                                e.getObservaciones(),
+                                e.getFechaEntrega());
+        }
 }

@@ -13,6 +13,8 @@ import com.mypelink.backend.shared.domain.enums.EstadoPostulacion;
 import com.mypelink.backend.shared.domain.enums.WorkflowEstado;
 import com.mypelink.backend.shared.infrastructure.exception.BusinessException;
 import com.mypelink.backend.shared.infrastructure.exception.ResourceNotFoundException;
+import com.mypelink.backend.usuarios.application.dto.ActualizarMypeRequest;
+import com.mypelink.backend.usuarios.application.dto.MypePerfilResponse;
 import com.mypelink.backend.usuarios.domain.repository.EstudianteRepository;
 import com.mypelink.backend.usuarios.domain.repository.MypeRepository;
 import com.mypelink.backend.usuarios.domain.repository.UsuarioRepository;
@@ -608,6 +610,129 @@ public class ProyectoService {
             throw new BusinessException("Acceso denegado: Se requiere rol Administrador", HttpStatus.FORBIDDEN);
         }
         return usuario;
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // MYPEs
+    // ══════════════════════════════════════════════════════════════
+    @Transactional(readOnly = true)
+    public MypePerfilResponse obtenerPerfilMype(Long mypeId, String emailSolicitante) {
+        var mype = mypeRepository.findById(mypeId)
+                .orElseThrow(() -> new ResourceNotFoundException("MYPE", mypeId));
+
+        // Determinar nivel de acceso
+        String nivelAcceso = "PUBLICO";
+
+        if (emailSolicitante != null) {
+            var usuarioSolicitante = usuarioRepository.findByEmailWithRole(emailSolicitante).orElse(null);
+
+            if (usuarioSolicitante != null) {
+                String rol = usuarioSolicitante.getRol().getNombre();
+
+                // Es la propia MYPE
+                if (rol.equals("ROLE_MYPE") || rol.equals("MYPE")) {
+                    var mypeSolicitante = mypeRepository.findByUsuarioId(usuarioSolicitante.getId());
+                    if (mypeSolicitante.isPresent() && mypeSolicitante.get().getId().equals(mypeId)) {
+                        nivelAcceso = "PROPIO";
+                    }
+                }
+
+                // Es un estudiante — verificar si está CONFIRMADO en algún proyecto de esta MYPE
+                if (rol.equals("ROLE_ESTUDIANTE") || rol.equals("ESTUDIANTE")) {
+                    var estudiante = estudianteRepository.findByUsuarioId(usuarioSolicitante.getId());
+                    if (estudiante.isPresent()) {
+                        boolean tieneProyectoConfirmado = postulacionRepository
+                                .findByEstudianteIdAndEstado(
+                                        estudiante.get().getId(),
+                                        EstadoPostulacion.CONFIRMADO
+                                )
+                                .stream()
+                                .anyMatch(p -> p.getProyecto().getMype().getId().equals(mypeId));
+
+                        if (tieneProyectoConfirmado) {
+                            nivelAcceso = "CONFIRMADO";
+                        }
+                    }
+                }
+
+                // Admin ve todo
+                if (rol.equals("ROLE_ADMIN") || rol.equals("ADMIN")) {
+                    nivelAcceso = "PROPIO";
+                }
+            }
+        }
+
+        // Contar y filtrar proyectos
+        var todosProyectos = proyectoRepository.findByMypeIdConMype(mypeId);
+        long totalProyectos = todosProyectos.size();
+        long proyectosActivos = todosProyectos.stream()
+                .filter(p -> p.getEstado() == WorkflowEstado.PENDIENTE
+                        || p.getEstado() == WorkflowEstado.EN_DESARROLLO)
+                .count();
+
+        boolean tieneAcceso = nivelAcceso.equals("PROPIO") || nivelAcceso.equals("CONFIRMADO");
+
+        List<ProyectoResponse> proyectosResponse = todosProyectos.stream()
+                .filter(p -> tieneAcceso || p.getEstado() == WorkflowEstado.PENDIENTE)
+                .map(this::toResponse)
+                .toList();
+
+        return new MypePerfilResponse(
+                mype.getId(),
+                mype.getNombreComercial(),
+                mype.getRazonSocial(),
+                mype.getRubro(),
+                mype.getUsuario().getFotoPerfil(),
+                mype.getDescripcion(),
+                mype.getSitioWeb(),
+                mype.getInstagram(),
+                mype.getFacebook(),
+                mype.getTiktok(),
+                mype.getWhatsapp(),
+                tieneAcceso ? mype.getRuc()           : null,
+                tieneAcceso ? mype.getDireccion()     : null,
+                tieneAcceso ? mype.getTelefono()      : null,
+                tieneAcceso ? mype.getEmailContacto() : null,
+                nivelAcceso,
+                totalProyectos,
+                proyectosActivos,
+                proyectosResponse
+        );
+    }
+
+    @Transactional
+    public MypePerfilResponse actualizarPerfil(Long mypeId, ActualizarMypeRequest request, String emailMype) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+
+        if (!mype.getId().equals(mypeId)) {
+            throw new BusinessException("No tienes permiso para editar este perfil", HttpStatus.FORBIDDEN);
+        }
+
+        if (request.rubro()         != null) mype.setRubro(request.rubro().isBlank() ? null : request.rubro());
+        if (request.descripcion()   != null) mype.setDescripcion(request.descripcion().isBlank() ? null : request.descripcion());
+        if (request.sitioWeb()      != null) mype.setSitioWeb(request.sitioWeb().isBlank() ? null : request.sitioWeb());
+        if (request.instagram()     != null) mype.setInstagram(request.instagram().isBlank() ? null : request.instagram());
+        if (request.facebook()      != null) mype.setFacebook(request.facebook().isBlank() ? null : request.facebook());
+        if (request.tiktok()        != null) mype.setTiktok(request.tiktok().isBlank() ? null : request.tiktok());
+        if (request.whatsapp()      != null) mype.setWhatsapp(request.whatsapp().isBlank() ? null : request.whatsapp());
+        if (request.direccion()     != null) mype.setDireccion(request.direccion().isBlank() ? null : request.direccion());
+        if (request.telefono()      != null) mype.setTelefono(request.telefono().isBlank() ? null : request.telefono());
+        if (request.emailContacto() != null) mype.setEmailContacto(request.emailContacto().isBlank() ? null : request.emailContacto());
+
+        mypeRepository.save(mype);
+        return obtenerPerfilMype(mypeId, emailMype);
+    }
+
+    @Transactional(readOnly = true)
+    public MypePerfilResponse miPerfilMype(String emailMype) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+        return obtenerPerfilMype(mype.getId(), emailMype);
     }
 
     // ══════════════════════════════════════════════════════════════
