@@ -154,7 +154,7 @@ public class AuthService {
                 .build();
         passwordResetRepository.save(reset);
 
-        emailService.sendOtpEmail(email, otp);
+        emailService.sendOtpEmail(email, otp, "Verificación de correo - Linkuy");
     }
 
     public boolean verifyOtp(String email, String otp) {

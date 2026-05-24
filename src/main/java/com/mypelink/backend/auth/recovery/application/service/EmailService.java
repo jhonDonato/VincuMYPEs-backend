@@ -20,33 +20,33 @@ public class EmailService {
         this.resend = new Resend(apiKey);
     }
 
-    public void sendOtpEmail(String to, String otpCode) {
+    public void sendOtpEmail(String to, String otpCode, String subject) {
         try {
             CreateEmailOptions options = CreateEmailOptions.builder()
                     .from("Linkuy <" + fromEmail + ">")
                     .to(to)
-                    .subject("Código de recuperación - Linkuy")
-                    .html(buildEmailTemplate(otpCode))
+                    .subject(subject)
+                    .html(buildEmailTemplate(otpCode, subject))
                     .build();
 
             resend.emails().send(options);
             log.info("OTP enviado exitosamente a: {}", to);
         } catch (ResendException e) {
             log.error("Error al enviar email OTP a {}: {}", to, e.getMessage());
-            throw new RuntimeException("Error al enviar el código de recuperación", e);
+            throw new RuntimeException("Error al enviar el código de verificación", e);
         }
     }
 
-    private String buildEmailTemplate(String otpCode) {
+    private String buildEmailTemplate(String otpCode, String subject) {
         return """
             <div style="font-family: Arial, Helvetica, sans-serif; max-width: 480px; margin: 0 auto;">
                 <div style="background: linear-gradient(135deg, #1B6FE8, #0E54C4); padding: 32px; border-radius: 8px 8px 0 0;">
                     <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Linkuy</h1>
                 </div>
                 <div style="background: white; padding: 32px; border: 1px solid #E5E7EB; border-top: none; border-radius: 0 0 8px 8px;">
-                    <h2 style="color: #0F1F3D; margin: 0 0 16px; font-size: 20px;">Recuperación de contraseña</h2>
+                    <h2 style="color: #0F1F3D; margin: 0 0 16px; font-size: 20px;">%s</h2>
                     <p style="color: #6B7280; margin: 0 0 24px; font-size: 14px; line-height: 1.6;">
-                        Has solicitado restablecer tu contraseña. Usa el siguiente código de verificación:
+                        Usa el siguiente código de verificación:
                     </p>
                     <div style="background: #F3F4F6; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 24px;">
                         <span style="font-size: 36px; font-weight: 700; letter-spacing: 12px; color: #0F1F3D; font-family: 'Courier New', monospace;">
@@ -57,10 +57,10 @@ public class EmailService {
                         Este código expira en <strong>10 minutos</strong>.
                     </p>
                     <p style="color: #9CA3AF; margin: 0; font-size: 12px;">
-                        Si no solicitaste este cambio, ignora este mensaje.
+                        Si no solicitaste este código, ignora este mensaje.
                     </p>
                 </div>
             </div>
-            """.formatted(otpCode);
+            """.formatted(subject, otpCode);
     }
 }

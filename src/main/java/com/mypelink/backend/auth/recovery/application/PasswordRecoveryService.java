@@ -34,8 +34,8 @@ public class PasswordRecoveryService {
     public void requestOtp(String email) {
         // No revelar si el email existe o no (seguridad)
         if (!usuarioRepository.existsByEmail(email)) {
-            log.info("Solicitud OTP para email no registrado: {}", email);
-            return;
+            log.info("Email no registrado: {}", email);
+            throw new BusinessException("No existe una cuenta asociada a este correo.");
         }
 
         // Invalidar códigos anteriores
@@ -53,7 +53,7 @@ public class PasswordRecoveryService {
         passwordResetRepository.save(reset);
 
         // Enviar email
-        emailService.sendOtpEmail(email, otp);
+        emailService.sendOtpEmail(email, otp, "Recuperación de contraseña - Linkuy");
         log.info("OTP generado y enviado para: {}", email);
     }
 
