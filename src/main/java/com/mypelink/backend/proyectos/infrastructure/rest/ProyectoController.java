@@ -19,7 +19,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/proyectos")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('ROLE_MYPE')")
+//@PreAuthorize("hasAuthority('ROLE_MYPE')")
 public class ProyectoController {
 
     private final ProyectoService proyectoService;

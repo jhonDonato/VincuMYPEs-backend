@@ -22,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
-
+import com.mypelink.backend.shared.domain.enums.EstadoEntregable;
 @Service
 @RequiredArgsConstructor
 public class EntregableService {
@@ -93,14 +93,56 @@ public class EntregableService {
     }
 
     @Transactional(readOnly = true)
-    public List<EntregableResponse> misEntregables(String emailEstudiante) {
+    public List<EntregableResponse> misEntregables(Long proyectoId, String emailEstudiante) {
         var usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
         var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
                 .orElseThrow(() -> new BusinessException("Perfil de estudiante no encontrado"));
 
-        return entregableRepository.findByEstudianteIdWithDetails(estudiante.getId())
-                .stream().map(this::toResponse).toList();
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        // Obtener entregables reales del estudiante para este proyecto
+        List<Entregable> entregablesReales = entregableRepository
+                .findByProyectoIdAndEstudianteId(proyectoId, estudiante.getId());
+
+        // Convertir a response
+        List<EntregableResponse> responses = new java.util.ArrayList<>();
+        for (Entregable e : entregablesReales) {
+            responses.add(toResponse(e));
+        }
+
+        // Si no hay entregables reales, crear desde los sugeridos del proyecto
+        if (responses.isEmpty() && proyecto.getEntregablesSugeridos() != null
+                && !proyecto.getEntregablesSugeridos().isBlank()) {
+
+            String[] sugeridos = proyecto.getEntregablesSugeridos().split(",");
+            for (String titulo : sugeridos) {
+                String tituloLimpio = titulo.trim();
+                if (!tituloLimpio.isEmpty()) {
+                    // ✅ Truncar título si es muy largo
+                    String tituloTruncado = tituloLimpio.length() > 200
+                            ? tituloLimpio.substring(0, 197) + "..."
+                            : tituloLimpio;
+
+                    responses.add(new EntregableResponse(
+                            null,
+                            proyecto.getId(),
+                            proyecto.getTitulo(),
+                            estudiante.getId(),
+                            estudiante.getUsuario().getNombre(),
+                            tituloTruncado,  // ✅ Usar título truncado
+                            "Entregable sugerido por la MYPE",  // ✅ Descripción corta
+                            null,
+                            EstadoEntregable.PENDIENTE,
+                            null,
+                            null
+                    ));
+                }
+            }
+        }
+
+        return responses;
     }
 
     @Transactional

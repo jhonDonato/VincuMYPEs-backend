@@ -9,7 +9,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
-
+import org.springframework.http.HttpStatus;
 @RestController
 @RequestMapping("/api/mensajes")
 @RequiredArgsConstructor
@@ -23,6 +23,24 @@ public class MensajeController {
     public ResponseEntity<List<ConversacionResponse>> misConversaciones(
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(mensajeService.misConversaciones(userDetails.getUsername()));
+    }
+    // ✅ NUEVO - Para ESTUDIANTE
+    @GetMapping("/conversaciones/estudiante")
+    @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE','ESTUDIANTE')")
+    public ResponseEntity<List<ConversacionResponse>> misConversacionesEstudiante(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(
+                mensajeService.misConversacionesEstudiante(userDetails.getUsername())
+        );
+    }
+    // ✅ NUEVO: Crear conversación
+    @PostMapping("/conversaciones")
+    @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE','ESTUDIANTE','ROLE_MYPE','MYPE')")
+    public ResponseEntity<ConversacionResponse> crearConversacion(
+            @RequestBody CrearConversacionRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(mensajeService.crearConversacion(request, userDetails.getUsername()));
     }
 
     // Mensajes de una conversación (MYPE y Estudiante)

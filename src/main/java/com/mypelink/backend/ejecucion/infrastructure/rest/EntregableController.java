@@ -60,7 +60,10 @@ public class EntregableController {
     @GetMapping("/mis-entregables")
     @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE', 'ESTUDIANTE')")
     public ResponseEntity<List<EntregableResponse>> misEntregables(
+            @PathVariable Long proyectoId,  // ✅ AGREGAR ESTO
             @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(entregableService.misEntregables(userDetails.getUsername()));
+        return ResponseEntity.ok(
+                entregableService.misEntregables(proyectoId, userDetails.getUsername()) // ✅ PASAR proyectoId
+        );
     }
 }

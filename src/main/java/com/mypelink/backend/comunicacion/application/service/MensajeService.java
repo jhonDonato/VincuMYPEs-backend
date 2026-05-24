@@ -15,6 +15,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
+import com.mypelink.backend.usuarios.domain.repository.EstudianteRepository;
+import com.mypelink.backend.proyectos.domain.repository.ProyectoRepository;
 
 @Service
 @RequiredArgsConstructor
@@ -24,7 +26,62 @@ public class MensajeService {
     private final MensajeRepository mensajeRepository;
     private final UsuarioRepository usuarioRepository;
     private final MypeRepository mypeRepository;
+    private final EstudianteRepository estudianteRepository; // ✅ AGREGAR ESTA LÍNEA
+    private final ProyectoRepository proyectoRepository;
 
+
+    // ✅ NUEVO MÉTODO
+    @Transactional
+    public ConversacionResponse crearConversacion(CrearConversacionRequest request, String email) {
+        var usuario = usuarioRepository.findByEmailWithRole(email)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+
+        var proyecto = proyectoRepository.findById(request.proyectoId())
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", request.proyectoId()));
+
+        // Determinar si es estudiante o mype
+        Conversacion conversacion;
+
+        if (usuario.getRol().getNombre().equals("ROLE_ESTUDIANTE") ||
+                usuario.getRol().getNombre().equals("ESTUDIANTE")) {
+
+            var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
+                    .orElseThrow(() -> new BusinessException("Perfil de estudiante no encontrado"));
+
+            // Verificar que no exista ya una conversación
+            var existente = conversacionRepository
+                    .findByProyectoIdAndEstudianteId(proyecto.getId(), estudiante.getId());
+            if (existente.isPresent()) {
+                return toConversacionResponse(existente.get(), usuario.getId());
+            }
+
+            // Crear nueva conversación
+            conversacion = conversacionRepository.save(Conversacion.builder()
+                    .proyecto(proyecto)
+                    .estudiante(estudiante)
+                    .mypeUsuario(proyecto.getMype().getUsuario())
+                    .asunto("Proyecto: " + proyecto.getTitulo())
+                    .build());
+
+        } else {
+            throw new BusinessException("Solo estudiantes pueden iniciar conversación desde aquí");
+        }
+
+        // Si hay mensaje inicial, enviarlo
+        if (request.mensaje() != null && !request.mensaje().isBlank()) {
+            mensajeRepository.save(Mensaje.builder()
+                    .conversacion(conversacion)
+                    .remitente(usuario)
+                    .mensaje(request.mensaje())
+                    .build());
+
+            conversacion.setUltimoMensaje(request.mensaje());
+            conversacion.setFechaUltimoMensaje(LocalDateTime.now());
+            conversacionRepository.save(conversacion);
+        }
+
+        return toConversacionResponse(conversacion, usuario.getId());
+    }
     // MYPE ve todas sus conversaciones activas
     @Transactional(readOnly = true)
     public List<ConversacionResponse> misConversaciones(String emailMype) {
@@ -32,6 +89,20 @@ public class MensajeService {
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
 
         return conversacionRepository.findByMypeUsuarioId(usuario.getId())
+                .stream()
+                .map(c -> toConversacionResponse(c, usuario.getId()))
+                .toList();
+    }
+    // ✅ NUEVO MÉTODO
+    @Transactional(readOnly = true)
+    public List<ConversacionResponse> misConversacionesEstudiante(String emailEstudiante) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+
+        var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil de estudiante no encontrado"));
+
+        return conversacionRepository.findByEstudianteId(estudiante.getId())
                 .stream()
                 .map(c -> toConversacionResponse(c, usuario.getId()))
                 .toList();

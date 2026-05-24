@@ -1,8 +1,11 @@
 package com.mypelink.backend.shared.domain.enums;
 
 public enum TipoNotificacion {
-    SISTEMA, POSTULACION, PROYECTO, MENSAJE, OTRO
+    POSTULACION,
+    PROYECTO,
+    MENSAJE,
+    ENTREGABLE,
+    CERTIFICADO,
+    SISTEMA,
+    ALERTA   // ✅ AGREGAR ESTO
 }
-
-
-

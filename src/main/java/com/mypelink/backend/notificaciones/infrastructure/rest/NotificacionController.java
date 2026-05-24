@@ -35,4 +35,28 @@ public class NotificacionController {
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(notificacionService.marcarComoLeida(id, userDetails.getUsername()));
     }
+    // ✅ Marcar todas como leídas
+    @PatchMapping("/leer-todas")
+    public ResponseEntity<Void> marcarTodasComoLeidas(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        notificacionService.marcarTodasComoLeidas(userDetails.getUsername());
+        return ResponseEntity.ok().build();
+    }
+
+    // ✅ Eliminar una notificación
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> eliminarNotificacion(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        notificacionService.eliminarNotificacion(id, userDetails.getUsername());
+        return ResponseEntity.noContent().build();
+    }
+
+    // ✅ Eliminar todas las notificaciones
+    @DeleteMapping
+    public ResponseEntity<Void> eliminarTodas(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        notificacionService.eliminarTodas(userDetails.getUsername());
+        return ResponseEntity.noContent().build();
+    }
 }

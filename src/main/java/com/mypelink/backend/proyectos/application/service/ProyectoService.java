@@ -27,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
+import com.mypelink.backend.usuarios.domain.model.Estudiante;
 
 @Service
 @RequiredArgsConstructor
@@ -144,7 +145,21 @@ public class ProyectoService {
             throw new BusinessException("Solo los proyectos en BORRADOR pueden publicarse");
         }
         proyecto.setEstado(WorkflowEstado.PENDIENTE);
-        return toResponse(proyectoRepository.save(proyecto));
+        Proyecto guardado = proyectoRepository.save(proyecto);
+
+        // ✅ NUEVO: Notificar a TODOS los estudiantes
+        List<Estudiante> estudiantes = estudianteRepository.findAll();
+        for (Estudiante estudiante : estudiantes) {
+            notificacionService.crearNotificacion(
+                    estudiante.getUsuario(),
+                    "🔔 Nuevo proyecto disponible",
+                    "La empresa \"" + mype.getNombreComercial() + "\" publicó: " + proyecto.getTitulo(),
+                    TipoNotificacion.PROYECTO,
+                    "/proyectos?selected=" + proyecto.getId()  // ✅ Esto va a /proyectos?selected=9
+            );
+        }
+
+        return toResponse(guardado);
     }
 
     @Transactional(readOnly = true)
@@ -276,7 +291,6 @@ public class ProyectoService {
                 throw new BusinessException("Solo se puede preseleccionar postulaciones en estado PENDIENTE");
             }
 
-            // CORRECCIÓN 1: Verificar que aún hay cupos disponibles antes de preseleccionar
             long yaConfirmados = postulacionRepository.findByProyectoId(proyectoId)
                     .stream()
                     .filter(p -> p.getEstado() == EstadoPostulacion.CONFIRMADO)
@@ -403,15 +417,12 @@ public class ProyectoService {
 
         var proyecto = postulacion.getProyecto();
 
-        // CORRECCIÓN 2: Verificar que los cupos siguen disponibles al momento de confirmar
-        // (otro estudiante pudo haber confirmado antes en proyectos con múltiples cupos)
         long yaConfirmados = postulacionRepository.findByProyectoId(proyecto.getId())
                 .stream()
                 .filter(p -> p.getEstado() == EstadoPostulacion.CONFIRMADO)
                 .count();
 
         if (yaConfirmados >= proyecto.getCupos()) {
-            // Los cupos ya se llenaron mientras esperaba — marcar como expirado
             postulacion.setEstado(EstadoPostulacion.EXPIRADO);
             postulacion.setFechaLimiteConfirmacion(null);
             postulacion.setFechaRespuesta(LocalDateTime.now());
@@ -437,7 +448,6 @@ public class ProyectoService {
             postulacion.setFechaRespuesta(LocalDateTime.now());
             postulacionRepository.save(postulacion);
 
-            // Recontar confirmados incluyendo el que acaba de confirmar
             long confirmadosActualizados = postulacionRepository.findByProyectoId(proyecto.getId())
                     .stream()
                     .filter(p -> p.getEstado() == EstadoPostulacion.CONFIRMADO)
@@ -454,7 +464,6 @@ public class ProyectoService {
                         .comentario("Cupos cubiertos. Estudiante " + usuario.getNombre() + " confirmó.")
                         .build());
 
-                // CORRECCIÓN 3: Rechazar automáticamente a todos los que quedaron fuera
                 List<EstadoPostulacion> estadosActivos = List.of(
                         EstadoPostulacion.PENDIENTE,
                         EstadoPostulacion.PRESELECCIONADO,
@@ -480,7 +489,7 @@ public class ProyectoService {
                         });
             }
 
-            // Notificar a la MYPE que el estudiante aceptó
+            // Notificar a la MYPE
             notificacionService.crearNotificacion(
                     proyecto.getMype().getUsuario(),
                     "¡Estudiante confirmado!",
@@ -488,6 +497,16 @@ public class ProyectoService {
                             + proyecto.getTitulo() + "\".",
                     TipoNotificacion.POSTULACION,
                     "/dashboard/postulaciones/" + proyecto.getId()
+            );
+
+            // ✅ NUEVO: Notificar al ESTUDIANTE con link al workspace
+            notificacionService.crearNotificacion(
+                    usuario,
+                    "¡Proyecto confirmado!",
+                    "Has confirmado tu participación en \"" + proyecto.getTitulo()
+                            + "\". Ya puedes acceder al workspace para subir tus entregables.",
+                    TipoNotificacion.POSTULACION,
+                    "/workspace/" + proyecto.getId()
             );
 
         } else {
@@ -609,12 +628,12 @@ public class ProyectoService {
     // ══════════════════════════════════════════════════════════════
     // MYPEs
     // ══════════════════════════════════════════════════════════════
+
     @Transactional(readOnly = true)
     public MypePerfilResponse obtenerPerfilMype(Long mypeId, String emailSolicitante) {
         var mype = mypeRepository.findById(mypeId)
                 .orElseThrow(() -> new ResourceNotFoundException("MYPE", mypeId));
 
-        // Determinar nivel de acceso
         String nivelAcceso = "PUBLICO";
 
         if (emailSolicitante != null) {
@@ -623,7 +642,6 @@ public class ProyectoService {
             if (usuarioSolicitante != null) {
                 String rol = usuarioSolicitante.getRol().getNombre();
 
-                // Es la propia MYPE
                 if (rol.equals("ROLE_MYPE") || rol.equals("MYPE")) {
                     var mypeSolicitante = mypeRepository.findByUsuarioId(usuarioSolicitante.getId());
                     if (mypeSolicitante.isPresent() && mypeSolicitante.get().getId().equals(mypeId)) {
@@ -631,7 +649,6 @@ public class ProyectoService {
                     }
                 }
 
-                // Es un estudiante — verificar si está CONFIRMADO en algún proyecto de esta MYPE
                 if (rol.equals("ROLE_ESTUDIANTE") || rol.equals("ESTUDIANTE")) {
                     var estudiante = estudianteRepository.findByUsuarioId(usuarioSolicitante.getId());
                     if (estudiante.isPresent()) {
@@ -649,14 +666,12 @@ public class ProyectoService {
                     }
                 }
 
-                // Admin ve todo
                 if (rol.equals("ROLE_ADMIN") || rol.equals("ADMIN")) {
                     nivelAcceso = "PROPIO";
                 }
             }
         }
 
-        // Contar y filtrar proyectos
         var todosProyectos = proyectoRepository.findByMypeIdConMype(mypeId);
         long totalProyectos = todosProyectos.size();
         long proyectosActivos = todosProyectos.stream()

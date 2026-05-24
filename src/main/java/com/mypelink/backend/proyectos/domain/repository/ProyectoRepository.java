@@ -29,4 +29,5 @@ public interface ProyectoRepository extends JpaRepository<Proyecto, Long> {
 
     @Query("SELECT p FROM Proyecto p JOIN FETCH p.mype m ORDER BY p.fechaCreacion DESC")
     List<Proyecto> findAllConMype();
+    List<Proyecto> findByEstadoAndActivoTrue(WorkflowEstado estado);
 }

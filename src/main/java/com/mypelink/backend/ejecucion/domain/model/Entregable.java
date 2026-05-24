@@ -28,7 +28,7 @@ public class Entregable {
     @JoinColumn(name = "estudiante_id", nullable = false)
     private Estudiante estudiante;
 
-    @Column(length = 200)
+    @Column(length = 500)
     private String titulo;
 
     @Column(columnDefinition = "TEXT")

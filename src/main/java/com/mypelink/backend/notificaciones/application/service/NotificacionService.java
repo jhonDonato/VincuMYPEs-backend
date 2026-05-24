@@ -79,4 +79,36 @@ public class NotificacionService {
                 notificacion.getFechaLectura()
         );
     }
+    // ✅ Marcar todas como leídas
+    @Transactional
+    public void marcarTodasComoLeidas(String email) {
+        List<Notificacion> noLeidas = notificacionRepository
+                .findByUsuarioEmailAndLeidaFalseOrderByFechaCreacionDesc(email);
+
+        noLeidas.forEach(n -> {
+            n.setLeida(true);
+            n.setFechaLectura(LocalDateTime.now());
+        });
+        notificacionRepository.saveAll(noLeidas);
+    }
+
+    // ✅ Eliminar una notificación
+    @Transactional
+    public void eliminarNotificacion(Long id, String email) {
+        Notificacion notificacion = notificacionRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Notificación no encontrada"));
+
+        if (!notificacion.getUsuario().getEmail().equals(email)) {
+            throw new ResourceNotFoundException("Notificación no encontrada para este usuario");
+        }
+        notificacionRepository.delete(notificacion);
+    }
+
+    // ✅ Eliminar todas las notificaciones
+    @Transactional
+    public void eliminarTodas(String email) {
+        List<Notificacion> todas = notificacionRepository
+                .findByUsuarioEmailOrderByFechaCreacionDesc(email);
+        notificacionRepository.deleteAll(todas);
+    }
 }
