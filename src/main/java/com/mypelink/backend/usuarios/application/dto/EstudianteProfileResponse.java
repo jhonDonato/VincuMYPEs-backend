@@ -16,6 +16,7 @@ public record EstudianteProfileResponse(
         String portafolioUrl,
         String linkedinUrl,
         String cvUrl,
+        Integer limiteProyectos,
 
         // 📍 NUEVOS CAMPOS DE UBICACIÓN
         String ciudad,

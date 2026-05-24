@@ -109,8 +109,9 @@ public class ProyectoService {
         }
         long proyectosActivos = postulacionRepository.countByEstudianteIdAndEstado(
                 estudiante.getId(), EstadoPostulacion.CONFIRMADO);
-        if (proyectosActivos >= 2) {
-            throw new BusinessException("No puedes tener más de 2 proyectos activos simultáneamente");
+        int maxProyectos = estudiante.getLimiteProyectos();
+        if (proyectosActivos >= maxProyectos) {
+            throw new BusinessException("No puedes tener más de " + maxProyectos + " proyectos activos simultáneamente");
         }
 
         var postulacion = postulacionRepository.save(Postulacion.builder()
@@ -539,13 +540,18 @@ public class ProyectoService {
         return proyectoRepository.findAllConMype().stream().map(p -> {
             long confirmados = postulacionRepository.findByProyectoId(p.getId())
                     .stream()
-                    .filter(post -> post.getEstado() == EstadoPostulacion.CONFIRMADO)
+                    .filter(post -> post.getEstado() == EstadoPostulacion.CONFIRMADO || post.getEstado() == EstadoPostulacion.ACEPTADO)
+                    .count();
+            long pendientes = postulacionRepository.findByProyectoId(p.getId())
+                    .stream()
+                    .filter(post -> post.getEstado() == EstadoPostulacion.PENDIENTE)
                     .count();
             return new ProyectoAdminResponse(
                     p.getId(), p.getTitulo(), p.getAreaSistemas(), p.getEstado(),
                     p.getCupos(), confirmados, p.getFechaCreacion(),
                     p.getMype() != null ? p.getMype().getNombreComercial() : "Sin MYPE",
                     p.getMype() != null ? p.getMype().getId() : null,
+                    pendientes,
                     p.getDelegarGestionAdmin()
             );
         }).toList();

@@ -15,6 +15,7 @@ public record ProyectoAdminResponse(
         LocalDateTime fechaCreacion,
         String mypeNombre,
         Long mypeId,
+        Long postulantesPendientes,
         Boolean gestionCedida
 ) {
 }

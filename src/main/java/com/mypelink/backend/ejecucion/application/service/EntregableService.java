@@ -7,6 +7,7 @@ import com.mypelink.backend.ejecucion.domain.repository.EntregableRepository;
 import com.mypelink.backend.notificaciones.application.service.NotificacionService;
 import com.mypelink.backend.proyectos.domain.repository.PostulacionRepository;
 import com.mypelink.backend.proyectos.domain.repository.ProyectoRepository;
+import com.mypelink.backend.shared.domain.enums.EstadoEntregable;
 import com.mypelink.backend.shared.domain.enums.EstadoPostulacion;
 import com.mypelink.backend.shared.domain.enums.TipoNotificacion;
 import com.mypelink.backend.shared.infrastructure.aws.S3Service;
@@ -21,8 +22,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
 import java.util.List;
-import com.mypelink.backend.shared.domain.enums.EstadoEntregable;
+
 @Service
 @RequiredArgsConstructor
 public class EntregableService {
@@ -34,10 +36,11 @@ public class EntregableService {
     private final MypeRepository mypeRepository;
     private final UsuarioRepository usuarioRepository;
     private final NotificacionService notificacionService;
-    private final S3Service s3Service; // ✨ AÑADIDO
+    private final S3Service s3Service;
 
     @Transactional
-    public EntregableResponse subir(Long proyectoId, String titulo, String descripcion, MultipartFile archivo, String emailEstudiante) {
+    public EntregableResponse subir(Long proyectoId, String titulo, String descripcion, MultipartFile archivo,
+                                    String emailEstudiante) {
         var usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
         var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
@@ -67,10 +70,10 @@ public class EntregableService {
         notificacionService.crearNotificacion(
                 proyecto.getMype().getUsuario(),
                 "Nuevo entregable recibido",
-                "El estudiante " + usuario.getNombre() + " subió un entregable para: " + proyecto.getTitulo(),
+                "El estudiante " + usuario.getNombre() + " subió un entregable para: "
+                        + proyecto.getTitulo(),
                 TipoNotificacion.PROYECTO,
-                "/dashboard/proyectos/" + proyectoId + "/entregables"
-        );
+                "/dashboard/proyectos/" + proyectoId + "/entregables");
 
         return toResponse(entregable);
     }
@@ -85,10 +88,22 @@ public class EntregableService {
                 .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
 
         if (!proyecto.getMype().getId().equals(mype.getId())) {
-            throw new BusinessException("No tienes permiso para ver estos entregables", HttpStatus.FORBIDDEN);
+            throw new BusinessException("No tienes permiso para ver estos entregables",
+                    HttpStatus.FORBIDDEN);
         }
 
         return entregableRepository.findByProyectoIdWithDetails(proyectoId)
+                .stream().map(this::toResponse).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<EntregableResponse> misEntregables(String emailEstudiante) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil de estudiante no encontrado"));
+
+        return entregableRepository.findByEstudianteIdWithDetails(estudiante.getId())
                 .stream().map(this::toResponse).toList();
     }
 
@@ -107,7 +122,7 @@ public class EntregableService {
                 .findByProyectoIdAndEstudianteId(proyectoId, estudiante.getId());
 
         // Convertir a response
-        List<EntregableResponse> responses = new java.util.ArrayList<>();
+        List<EntregableResponse> responses = new ArrayList<>();
         for (Entregable e : entregablesReales) {
             responses.add(toResponse(e));
         }
@@ -120,7 +135,7 @@ public class EntregableService {
             for (String titulo : sugeridos) {
                 String tituloLimpio = titulo.trim();
                 if (!tituloLimpio.isEmpty()) {
-                    // ✅ Truncar título si es muy largo
+                    // Truncar título si es muy largo
                     String tituloTruncado = tituloLimpio.length() > 200
                             ? tituloLimpio.substring(0, 197) + "..."
                             : tituloLimpio;
@@ -131,13 +146,12 @@ public class EntregableService {
                             proyecto.getTitulo(),
                             estudiante.getId(),
                             estudiante.getUsuario().getNombre(),
-                            tituloTruncado,  // ✅ Usar título truncado
-                            "Entregable sugerido por la MYPE",  // ✅ Descripción corta
+                            tituloTruncado,
+                            "Entregable sugerido por la MYPE",
                             null,
                             EstadoEntregable.PENDIENTE,
                             null,
-                            null
-                    ));
+                            null));
                 }
             }
         }
@@ -156,7 +170,8 @@ public class EntregableService {
                 .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
 
         if (!proyecto.getMype().getId().equals(mype.getId())) {
-            throw new BusinessException("No tienes permiso para revisar estos entregables", HttpStatus.FORBIDDEN);
+            throw new BusinessException("No tienes permiso para revisar estos entregables",
+                    HttpStatus.FORBIDDEN);
         }
 
         var entregable = entregableRepository.findById(entregableId)
@@ -169,10 +184,10 @@ public class EntregableService {
         notificacionService.crearNotificacion(
                 entregable.getEstudiante().getUsuario(),
                 "Tu entregable fue revisado",
-                "Tu entregable \"" + entregable.getTitulo() + "\" fue marcado como " + request.estado().name(),
+                "Tu entregable \"" + entregable.getTitulo() + "\" fue marcado como "
+                        + request.estado().name(),
                 TipoNotificacion.PROYECTO,
-                "/mis-entregables"
-        );
+                "/mis-entregables");
 
         return toResponse(saved);
     }
@@ -189,7 +204,6 @@ public class EntregableService {
                 e.getArchivo(),
                 e.getEstado(),
                 e.getObservaciones(),
-                e.getFechaEntrega()
-        );
+                e.getFechaEntrega());
     }
 }

@@ -94,6 +94,7 @@ public class EstudianteService {
                 estudiante.getPortafolioUrl(),
                 estudiante.getLinkedinUrl(),
                 estudiante.getCvUrl(),
+                estudiante.getLimiteProyectos(),
                 // 📍 MAPEAR UBICACIÓN
                 estudiante.getCiudad(),
                 estudiante.getPais(),

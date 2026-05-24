@@ -38,6 +38,7 @@ public class ProyectoController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ProyectoResponse> obtener(@PathVariable Long id) {
         return ResponseEntity.ok(proyectoService.obtenerPorId(id));
     }
