@@ -22,7 +22,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -107,6 +106,7 @@ public class EntregableService {
                 .stream().map(this::toResponse).toList();
     }
 
+    // ✅ ESTE ES EL MÉTODO CORREGIDO - REEMPLÁZALO COMPLETAMENTE
     @Transactional(readOnly = true)
     public List<EntregableResponse> misEntregables(Long proyectoId, String emailEstudiante) {
         var usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
@@ -114,49 +114,14 @@ public class EntregableService {
         var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
                 .orElseThrow(() -> new BusinessException("Perfil de estudiante no encontrado"));
 
-        var proyecto = proyectoRepository.findById(proyectoId)
-                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
-
-        // Obtener entregables reales del estudiante para este proyecto
+        // Obtener entregables REALES del estudiante para este proyecto
         List<Entregable> entregablesReales = entregableRepository
                 .findByProyectoIdAndEstudianteId(proyectoId, estudiante.getId());
 
-        // Convertir a response
-        List<EntregableResponse> responses = new ArrayList<>();
-        for (Entregable e : entregablesReales) {
-            responses.add(toResponse(e));
-        }
-
-        // Si no hay entregables reales, crear desde los sugeridos del proyecto
-        if (responses.isEmpty() && proyecto.getEntregablesSugeridos() != null
-                && !proyecto.getEntregablesSugeridos().isBlank()) {
-
-            String[] sugeridos = proyecto.getEntregablesSugeridos().split(",");
-            for (String titulo : sugeridos) {
-                String tituloLimpio = titulo.trim();
-                if (!tituloLimpio.isEmpty()) {
-                    // Truncar título si es muy largo
-                    String tituloTruncado = tituloLimpio.length() > 200
-                            ? tituloLimpio.substring(0, 197) + "..."
-                            : tituloLimpio;
-
-                    responses.add(new EntregableResponse(
-                            null,
-                            proyecto.getId(),
-                            proyecto.getTitulo(),
-                            estudiante.getId(),
-                            estudiante.getUsuario().getNombre(),
-                            tituloTruncado,
-                            "Entregable sugerido por la MYPE",
-                            null,
-                            EstadoEntregable.PENDIENTE,
-                            null,
-                            null));
-                }
-            }
-        }
-
-        return responses;
+        // Convertir a response - SIN CREAR ENTREGABLES FALSOS
+        return entregablesReales.stream()
+                .map(this::toResponse)
+                .toList();
     }
 
     @Transactional
@@ -193,6 +158,15 @@ public class EntregableService {
     }
 
     private EntregableResponse toResponse(Entregable e) {
+        // Extraer nombre del archivo de la URL
+        String archivoNombre = null;
+        if (e.getArchivo() != null && !e.getArchivo().isEmpty()) {
+            String[] parts = e.getArchivo().split("/");
+            archivoNombre = parts[parts.length - 1];
+            // Decodificar caracteres especiales si es necesario
+            archivoNombre = archivoNombre.replace("_", " ").replace("%20", " ");
+        }
+
         return new EntregableResponse(
                 e.getId(),
                 e.getProyecto().getId(),
@@ -204,6 +178,39 @@ public class EntregableService {
                 e.getArchivo(),
                 e.getEstado(),
                 e.getObservaciones(),
-                e.getFechaEntrega());
+                e.getFechaEntrega(),
+                archivoNombre);  // ← AGREGAR ESTE PARÁMETRO
+    }
+
+    @Transactional
+    public void eliminar(Long proyectoId, Long entregableId, String emailEstudiante) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil de estudiante no encontrado"));
+
+        var entregable = entregableRepository.findById(entregableId)
+                .orElseThrow(() -> new ResourceNotFoundException("Entregable", entregableId));
+
+        // Verificar que el entregable pertenezca al estudiante
+        if (!entregable.getEstudiante().getId().equals(estudiante.getId())) {
+            throw new BusinessException("No puedes eliminar este entregable", HttpStatus.FORBIDDEN);
+        }
+
+        // Verificar que el entregable esté en estado PENDIENTE o RECHAZADO
+        if (entregable.getEstado() == EstadoEntregable.APROBADO) {
+            throw new BusinessException("No puedes eliminar un entregable ya aprobado", HttpStatus.BAD_REQUEST);
+        }
+
+        // Opcional: Eliminar el archivo de S3
+        if (entregable.getArchivo() != null && !entregable.getArchivo().isEmpty()) {
+            try {
+                s3Service.eliminarArchivo(entregable.getArchivo());
+            } catch (Exception e) {
+                System.err.println("Error deleting file from S3: " + e.getMessage());
+            }
+        }
+
+        entregableRepository.delete(entregable);
     }
 }

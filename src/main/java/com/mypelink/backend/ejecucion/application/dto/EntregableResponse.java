@@ -14,5 +14,16 @@ public record EntregableResponse(
         String archivo,
         EstadoEntregable estado,
         String observaciones,
-        LocalDateTime fechaEntrega
-) {}
+        LocalDateTime fechaEntrega,
+        String archivoNombre  // ← AGREGAR ESTO
+) {
+    // Constructor para entregables sugeridos (sin archivo)
+    public EntregableResponse(Long id, Long proyectoId, String proyectoTitulo,
+                              Long estudianteId, String estudianteNombre,
+                              String titulo, String descripcion, String archivo,
+                              EstadoEntregable estado, String observaciones,
+                              LocalDateTime fechaEntrega) {
+        this(id, proyectoId, proyectoTitulo, estudianteId, estudianteNombre,
+                titulo, descripcion, archivo, estado, observaciones, fechaEntrega, null);
+    }
+}

@@ -66,4 +66,13 @@ public class EntregableController {
                 entregableService.misEntregables(proyectoId, userDetails.getUsername()) // ✅ PASAR proyectoId
         );
     }
+    @DeleteMapping("/{entregableId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE', 'ESTUDIANTE')")
+    public ResponseEntity<Void> eliminarEntregable(
+            @PathVariable Long proyectoId,
+            @PathVariable Long entregableId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        entregableService.eliminar(proyectoId, entregableId, userDetails.getUsername());
+        return ResponseEntity.noContent().build();
+    }
 }

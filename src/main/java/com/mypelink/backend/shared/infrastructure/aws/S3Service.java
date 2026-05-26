@@ -7,16 +7,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.IOException;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class S3Service {
 
-    private final S3Client s3Client;
+    private final S3Client s3Client;  // ✅ Esto es SdkClient (v2)
 
     @Value("${aws.s3.bucket}")
     private String bucketName;
@@ -24,6 +27,59 @@ public class S3Service {
     @Value("${aws.region}")
     private String region;
 
+    // ✅ MÉTODO CORREGIDO - usa s3Client (no amazonS3)
+    public void eliminarArchivo(String fileUrl) {
+        try {
+            String key = extractKeyFromUrl(fileUrl);
+
+            DeleteObjectRequest deleteRequest = DeleteObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(key)
+                    .build();
+
+            s3Client.deleteObject(deleteRequest);
+
+        } catch (Exception e) {
+            throw new BusinessException("Error al eliminar archivo de S3: " + e.getMessage());
+        }
+    }
+
+    // ✅ MÉTODO CORREGIDO - extrae la key correctamente
+    private String extractKeyFromUrl(String fileUrl) {
+        try {
+            // La URL tiene formato: https://bucket-name.s3.region.amazonaws.com/path/to/file.pdf
+            // Necesitamos extraer todo después del bucket
+
+            String bucketWithDot = bucketName + ".s3.";
+
+            int bucketIndex = fileUrl.indexOf(bucketWithDot);
+            if (bucketIndex == -1) {
+                // Intentar otro formato: https://s3.region.amazonaws.com/bucket-name/path
+                bucketIndex = fileUrl.indexOf(bucketName);
+                if (bucketIndex == -1) {
+                    throw new BusinessException("No se pudo extraer la key de la URL: " + fileUrl);
+                }
+                String afterBucket = fileUrl.substring(bucketIndex + bucketName.length() + 1);
+                // Decodificar URL (por si tiene espacios o caracteres especiales)
+                return URLDecoder.decode(afterBucket, StandardCharsets.UTF_8.name());
+            }
+
+            String afterBucket = fileUrl.substring(bucketIndex + bucketWithDot.length());
+            // Saltar la región y .amazonaws.com/
+            int regionEnd = afterBucket.indexOf(".amazonaws.com/");
+            if (regionEnd != -1) {
+                afterBucket = afterBucket.substring(regionEnd + 15); // len(".amazonaws.com/") = 15
+            }
+
+            // Decodificar URL
+            return URLDecoder.decode(afterBucket, StandardCharsets.UTF_8.name());
+
+        } catch (Exception e) {
+            throw new BusinessException("Error al procesar la URL del archivo: " + e.getMessage());
+        }
+    }
+
+    // Tus métodos existentes (subirEntregablePdf, subirCvPdf, subirImagenPerfil) se quedan igual
     public String subirEntregablePdf(MultipartFile file) {
         if (file.isEmpty()) {
             throw new BusinessException("El archivo adjunto está vacío.");
@@ -60,7 +116,7 @@ public class S3Service {
             throw new BusinessException("El CV debe ser un archivo PDF.");
         }
 
-        long maxBytes = 5L * 1024 * 1024; // 5 MB
+        long maxBytes = 5L * 1024 * 1024;
         if (file.getSize() > maxBytes) {
             throw new BusinessException("El CV no puede superar los 5MB.");
         }
