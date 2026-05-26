@@ -7,7 +7,9 @@ import com.mypelink.backend.shared.domain.enums.TipoNotificacion;
 import com.mypelink.backend.shared.infrastructure.exception.ResourceNotFoundException;
 import com.mypelink.backend.usuarios.domain.model.Usuario;
 import com.mypelink.backend.notificaciones.infrastructure.rest.websocket.NotificationWebSocketService;
+import com.mypelink.backend.auth.recovery.application.service.EmailService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,10 +19,12 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class NotificacionService {
 
     private final NotificacionRepository notificacionRepository;
     private final NotificationWebSocketService webSocketService;
+    private final EmailService emailService;
 
     @Transactional(readOnly = true)
     public List<NotificacionResponse> listarMisNotificaciones(String email) {
@@ -43,7 +47,6 @@ public class NotificacionService {
         Notificacion notificacion = notificacionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Notificación no encontrada"));
 
-        // Verificar que la notificación pertenece al usuario
         if (!notificacion.getUsuario().getEmail().equals(email)) {
             throw new ResourceNotFoundException("Notificación no encontrada para este usuario");
         }
@@ -70,9 +73,25 @@ public class NotificacionService {
                 .build();
         notificacion = notificacionRepository.save(notificacion);
 
-        // Emitir notificación por WebSocket en tiempo real
+        // Emitir por WebSocket
         NotificacionResponse response = mapToResponse(notificacion);
         webSocketService.enviarNotificacion(usuario.getId(), response);
+
+        // Enviar correo SOLO a estudiantes
+        if (usuario.getRol().getNombre().equals("ESTUDIANTE")) {
+            try {
+                String nombreUsuario = usuario.getNombre() != null ? usuario.getNombre() : "Estudiante";
+                emailService.enviarCorreoNotificacion(
+                        usuario.getEmail(),
+                        titulo,
+                        mensaje,
+                        nombreUsuario
+                );
+                log.info("📧 Correo enviado al estudiante: {}", usuario.getEmail());
+            } catch (Exception e) {
+                log.error("⚠️ Error enviando correo a {}: {}", usuario.getEmail(), e.getMessage());
+            }
+        }
     }
 
     private NotificacionResponse mapToResponse(Notificacion notificacion) {
@@ -87,7 +106,7 @@ public class NotificacionService {
                 notificacion.getFechaLectura()
         );
     }
-    // ✅ Marcar todas como leídas
+
     @Transactional
     public void marcarTodasComoLeidas(String email) {
         List<Notificacion> noLeidas = notificacionRepository
@@ -100,7 +119,6 @@ public class NotificacionService {
         notificacionRepository.saveAll(noLeidas);
     }
 
-    // ✅ Eliminar una notificación
     @Transactional
     public void eliminarNotificacion(Long id, String email) {
         Notificacion notificacion = notificacionRepository.findById(id)
@@ -112,7 +130,6 @@ public class NotificacionService {
         notificacionRepository.delete(notificacion);
     }
 
-    // ✅ Eliminar todas las notificaciones
     @Transactional
     public void eliminarTodas(String email) {
         List<Notificacion> todas = notificacionRepository
