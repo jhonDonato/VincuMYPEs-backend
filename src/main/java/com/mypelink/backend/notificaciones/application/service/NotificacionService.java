@@ -6,6 +6,7 @@ import com.mypelink.backend.notificaciones.domain.repository.NotificacionReposit
 import com.mypelink.backend.shared.domain.enums.TipoNotificacion;
 import com.mypelink.backend.shared.infrastructure.exception.ResourceNotFoundException;
 import com.mypelink.backend.usuarios.domain.model.Usuario;
+import com.mypelink.backend.notificaciones.infrastructure.rest.websocket.NotificationWebSocketService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +20,7 @@ import java.util.stream.Collectors;
 public class NotificacionService {
 
     private final NotificacionRepository notificacionRepository;
+    private final NotificationWebSocketService webSocketService;
 
     @Transactional(readOnly = true)
     public List<NotificacionResponse> listarMisNotificaciones(String email) {
@@ -63,8 +65,14 @@ public class NotificacionService {
                 .mensaje(mensaje)
                 .tipo(tipo)
                 .urlReferencia(urlReferencia)
+                .leida(false)
+                .fechaCreacion(LocalDateTime.now())
                 .build();
-        notificacionRepository.save(notificacion);
+        notificacion = notificacionRepository.save(notificacion);
+
+        // Emitir notificación por WebSocket en tiempo real
+        NotificacionResponse response = mapToResponse(notificacion);
+        webSocketService.enviarNotificacion(usuario.getId(), response);
     }
 
     private NotificacionResponse mapToResponse(Notificacion notificacion) {
