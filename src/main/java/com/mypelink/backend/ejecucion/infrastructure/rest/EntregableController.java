@@ -25,7 +25,7 @@ public class EntregableController {
 
     private final EntregableService entregableService;
 
-
+    // ✅ SUBIR ENTREGABLE (ESTUDIANTE)
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE', 'ESTUDIANTE')")
     public ResponseEntity<EntregableResponse> subir(
@@ -39,6 +39,7 @@ public class EntregableController {
                 .body(entregableService.subir(proyectoId, titulo, descripcion, archivo, userDetails.getUsername()));
     }
 
+    // ✅ LISTAR TODOS LOS ENTREGABLES DEL PROYECTO (MYPE)
     @GetMapping
     @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
     public ResponseEntity<List<EntregableResponse>> listar(
@@ -47,6 +48,7 @@ public class EntregableController {
         return ResponseEntity.ok(entregableService.listarPorProyecto(proyectoId, userDetails.getUsername()));
     }
 
+    // ✅ REVISAR ENTREGABLE (MYPE)
     @PatchMapping("/{entregableId}/estado")
     @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
     public ResponseEntity<EntregableResponse> revisar(
@@ -57,15 +59,18 @@ public class EntregableController {
         return ResponseEntity.ok(entregableService.revisar(proyectoId, entregableId, request, userDetails.getUsername()));
     }
 
+    // ✅ MIS ENTREGABLES (ESTUDIANTE) - CORREGIDO con proyectoId
     @GetMapping("/mis-entregables")
     @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE', 'ESTUDIANTE')")
     public ResponseEntity<List<EntregableResponse>> misEntregables(
-            @PathVariable Long proyectoId,  // ✅ AGREGAR ESTO
+            @PathVariable Long proyectoId,
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(
-                entregableService.misEntregables(proyectoId, userDetails.getUsername()) // ✅ PASAR proyectoId
+                entregableService.misEntregables(proyectoId, userDetails.getUsername())
         );
     }
+
+    // ✅ ELIMINAR ENTREGABLE (ESTUDIANTE)
     @DeleteMapping("/{entregableId}")
     @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE', 'ESTUDIANTE')")
     public ResponseEntity<Void> eliminarEntregable(
@@ -74,5 +79,13 @@ public class EntregableController {
             @AuthenticationPrincipal UserDetails userDetails) {
         entregableService.eliminar(proyectoId, entregableId, userDetails.getUsername());
         return ResponseEntity.noContent().build();
+    }
+    // ✅ NUEVO ENDPOINT: Solo entregables SUBIDOS (con archivo)
+    @GetMapping("/subidos")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
+    public ResponseEntity<List<EntregableResponse>> listarSoloSubidos(
+            @PathVariable Long proyectoId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(entregableService.listarSoloSubidos(proyectoId, userDetails.getUsername()));
     }
 }

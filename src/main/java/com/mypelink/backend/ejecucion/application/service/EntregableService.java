@@ -22,7 +22,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -77,6 +82,7 @@ public class EntregableService {
         return toResponse(entregable);
     }
 
+    // ✅ MÉTODO CORREGIDO: listarPorProyecto - Evita duplicados
     @Transactional(readOnly = true)
     public List<EntregableResponse> listarPorProyecto(Long proyectoId, String emailMype) {
         var usuario = usuarioRepository.findByEmailWithRole(emailMype)
@@ -91,10 +97,36 @@ public class EntregableService {
                     HttpStatus.FORBIDDEN);
         }
 
-        return entregableRepository.findByProyectoIdWithDetails(proyectoId)
-                .stream().map(this::toResponse).toList();
+        // 1. Obtener entregables sugeridos del proyecto
+        List<String> entregablesSugeridos = obtenerEntregablesSugeridos(proyecto);
+
+        // 2. Obtener entregables reales subidos por estudiantes
+        List<Entregable> entregablesReales = entregableRepository.findByProyectoIdWithDetails(proyectoId);
+
+        // 3. Crear un conjunto con los títulos de los entregables reales
+        Set<String> titulosReales = entregablesReales.stream()
+                .map(Entregable::getTitulo)
+                .collect(Collectors.toSet());
+
+        // 4. Construir lista: PRIMERO los reales, LUEGO los sugeridos que NO existen
+        List<EntregableResponse> resultado = new ArrayList<>();
+
+        // Agregar entregables reales (los que ya subió el estudiante)
+        for (Entregable real : entregablesReales) {
+            resultado.add(toResponse(real));
+        }
+
+        // Agregar SOLO los sugeridos que NO tienen un entregable real
+        for (String tituloSugerido : entregablesSugeridos) {
+            if (!titulosReales.contains(tituloSugerido)) {
+                resultado.add(crearEntregableVirtual(proyecto, tituloSugerido));
+            }
+        }
+
+        return resultado;
     }
 
+    // ✅ MÉTODO 1: Obtener TODOS los entregables del estudiante (sin filtrar por proyecto)
     @Transactional(readOnly = true)
     public List<EntregableResponse> misEntregables(String emailEstudiante) {
         var usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
@@ -103,10 +135,10 @@ public class EntregableService {
                 .orElseThrow(() -> new BusinessException("Perfil de estudiante no encontrado"));
 
         return entregableRepository.findByEstudianteIdWithDetails(estudiante.getId())
-                .stream().map(this::toResponse).toList();
+                .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
-    // ✅ ESTE ES EL MÉTODO CORREGIDO - REEMPLÁZALO COMPLETAMENTE
+    // ✅ MÉTODO 2: Obtener entregables del estudiante POR PROYECTO
     @Transactional(readOnly = true)
     public List<EntregableResponse> misEntregables(Long proyectoId, String emailEstudiante) {
         var usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
@@ -114,14 +146,15 @@ public class EntregableService {
         var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
                 .orElseThrow(() -> new BusinessException("Perfil de estudiante no encontrado"));
 
-        // Obtener entregables REALES del estudiante para este proyecto
-        List<Entregable> entregablesReales = entregableRepository
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        List<Entregable> entregables = entregableRepository
                 .findByProyectoIdAndEstudianteId(proyectoId, estudiante.getId());
 
-        // Convertir a response - SIN CREAR ENTREGABLES FALSOS
-        return entregablesReales.stream()
+        return entregables.stream()
                 .map(this::toResponse)
-                .toList();
+                .collect(Collectors.toList());
     }
 
     @Transactional
@@ -158,12 +191,10 @@ public class EntregableService {
     }
 
     private EntregableResponse toResponse(Entregable e) {
-        // Extraer nombre del archivo de la URL
         String archivoNombre = null;
         if (e.getArchivo() != null && !e.getArchivo().isEmpty()) {
             String[] parts = e.getArchivo().split("/");
             archivoNombre = parts[parts.length - 1];
-            // Decodificar caracteres especiales si es necesario
             archivoNombre = archivoNombre.replace("_", " ").replace("%20", " ");
         }
 
@@ -179,7 +210,7 @@ public class EntregableService {
                 e.getEstado(),
                 e.getObservaciones(),
                 e.getFechaEntrega(),
-                archivoNombre);  // ← AGREGAR ESTE PARÁMETRO
+                archivoNombre);
     }
 
     @Transactional
@@ -192,17 +223,14 @@ public class EntregableService {
         var entregable = entregableRepository.findById(entregableId)
                 .orElseThrow(() -> new ResourceNotFoundException("Entregable", entregableId));
 
-        // Verificar que el entregable pertenezca al estudiante
         if (!entregable.getEstudiante().getId().equals(estudiante.getId())) {
             throw new BusinessException("No puedes eliminar este entregable", HttpStatus.FORBIDDEN);
         }
 
-        // Verificar que el entregable esté en estado PENDIENTE o RECHAZADO
         if (entregable.getEstado() == EstadoEntregable.APROBADO) {
             throw new BusinessException("No puedes eliminar un entregable ya aprobado", HttpStatus.BAD_REQUEST);
         }
 
-        // Opcional: Eliminar el archivo de S3
         if (entregable.getArchivo() != null && !entregable.getArchivo().isEmpty()) {
             try {
                 s3Service.eliminarArchivo(entregable.getArchivo());
@@ -212,5 +240,67 @@ public class EntregableService {
         }
 
         entregableRepository.delete(entregable);
+    }
+
+    // ============================================
+    // ✅ MÉTODOS AUXILIARES
+    // ============================================
+
+    private List<String> obtenerEntregablesSugeridos(com.mypelink.backend.proyectos.domain.model.Proyecto proyecto) {
+        String entregablesText = proyecto.getEntregablesSugeridos();
+        if (entregablesText == null || entregablesText.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        String[] items = entregablesText.split("[•\\-\\*\\n]");
+        List<String> result = new ArrayList<>();
+        for (String item : items) {
+            String trimmed = item.trim();
+            if (!trimmed.isEmpty() && trimmed.length() > 3) {
+                trimmed = trimmed.replaceAll("^\\d+[\\.\\-\\s]+", "");
+                result.add(trimmed);
+            }
+        }
+
+        if (result.isEmpty() && !entregablesText.trim().isEmpty()) {
+            result.add(entregablesText.trim());
+        }
+
+        return result;
+    }
+
+    private EntregableResponse crearEntregableVirtual(com.mypelink.backend.proyectos.domain.model.Proyecto proyecto, String titulo) {
+        return new EntregableResponse(
+                null,
+                proyecto.getId(),
+                proyecto.getTitulo(),
+                null,
+                null,
+                titulo,
+                null,
+                null,
+                EstadoEntregable.PENDIENTE,
+                null,
+                null,
+                null
+        );
+    }
+
+    // ✅ NUEVO MÉTODO: Solo entregables que YA SUBIERON los estudiantes
+    @Transactional(readOnly = true)
+    public List<EntregableResponse> listarSoloSubidos(Long proyectoId, String emailMype) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        if (!proyecto.getMype().getId().equals(mype.getId())) {
+            throw new BusinessException("No tienes permiso", HttpStatus.FORBIDDEN);
+        }
+
+        return entregableRepository.findByProyectoIdWithDetails(proyectoId)
+                .stream().map(this::toResponse).collect(Collectors.toList());
     }
 }
