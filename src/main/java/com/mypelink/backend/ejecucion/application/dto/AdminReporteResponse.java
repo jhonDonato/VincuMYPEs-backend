@@ -5,6 +5,11 @@ import java.util.List;
 public record AdminReporteResponse(
         List<EvaluacionDetalleResponse> reportes,
         Double satisfaccionPromedio,
-        Integer tiempoPromedio, // en días
-        Double tasaExito // porcentaje, ej. 92.0
+        Integer tiempoPromedio,
+        Double tasaExito,
+        long totalMypes,
+        long estudiantesActivos,
+        long proyectosEnDesarrollo,
+        long totalEvaluaciones,
+        List<AreaDistribucionResponse> distribucionAreas
 ) {}

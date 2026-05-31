@@ -8,5 +8,7 @@ public record AdminUsuarioResponse(
         String estado,
         String carrera,
         String sector,
-        Integer limiteProyectos
+        Integer limiteProyectos,
+        Double promedioEstrellas,
+        Long proyectosCompletados
 ) {}

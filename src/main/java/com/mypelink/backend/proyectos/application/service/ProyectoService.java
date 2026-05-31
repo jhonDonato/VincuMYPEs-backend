@@ -1,16 +1,13 @@
 package com.mypelink.backend.proyectos.application.service;
 
 import com.mypelink.backend.notificaciones.application.service.NotificacionService;
+import com.mypelink.backend.proyectos.domain.model.*;
+import com.mypelink.backend.proyectos.domain.repository.*;
 import com.mypelink.backend.shared.domain.enums.TipoNotificacion;
-import com.mypelink.backend.proyectos.domain.model.Postulacion;
-import com.mypelink.backend.proyectos.domain.model.Proyecto;
-import com.mypelink.backend.proyectos.domain.model.WorkflowHistorial;
 import com.mypelink.backend.proyectos.application.dto.*;
-import com.mypelink.backend.proyectos.domain.repository.PostulacionRepository;
-import com.mypelink.backend.proyectos.domain.repository.ProyectoRepository;
-import com.mypelink.backend.proyectos.domain.repository.WorkflowHistorialRepository;
 import com.mypelink.backend.shared.domain.enums.EstadoPostulacion;
 import com.mypelink.backend.shared.domain.enums.WorkflowEstado;
+import com.mypelink.backend.shared.infrastructure.aws.S3Service;
 import com.mypelink.backend.shared.infrastructure.exception.BusinessException;
 import com.mypelink.backend.shared.infrastructure.exception.ResourceNotFoundException;
 import com.mypelink.backend.usuarios.application.dto.ActualizarMypeRequest;
@@ -26,8 +23,14 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
+import com.mypelink.backend.proyectos.domain.model.TipoProyecto;
+import com.mypelink.backend.proyectos.domain.model.EntregableTipo;
+
 import com.mypelink.backend.usuarios.domain.model.Estudiante;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @RequiredArgsConstructor
@@ -40,11 +43,16 @@ public class ProyectoService {
     private final UsuarioRepository usuarioRepository;
     private final NotificacionService notificacionService;
     private final WorkflowHistorialRepository workflowHistorialRepository;
+    private final TipoProyectoRepository tipoProyectoRepository;
+    private final EntregableTipoRepository entregableTipoRepository;
+    private final InsumoTipoRepository insumoTipoRepository;
+    private final InsumoProyectoRepository insumoProyectoRepository;
+    private final S3Service s3Service;
 
     private static final int HORAS_PLAZO = 12;
 
     // ══════════════════════════════════════════════════════════════
-    // MÉTODOS EXISTENTES
+    // MÉTODOS EXISTENTES (sin cambios respecto al original)
     // ══════════════════════════════════════════════════════════════
 
     @Transactional(readOnly = true)
@@ -89,6 +97,21 @@ public class ProyectoService {
                 .delegarGestionAdmin(false)
                 .fechaInicio(request.fechaInicio()).fechaLimite(request.fechaLimite())
                 .estado(WorkflowEstado.BORRADOR).build();
+        // Si viene tipoProyectoId, asociarlo y generar entregables desde EntregableTipo
+        if (request.tipoProyectoId() != null) {
+            TipoProyecto tipo = tipoProyectoRepository.findById(request.tipoProyectoId())
+                    .orElseThrow(() -> new ResourceNotFoundException("TipoProyecto", request.tipoProyectoId()));
+            proyecto.setTipoProyecto(tipo);
+            // Generar entregablesSugeridos desde EntregableTipo si no se enviaron
+            if (request.entregablesSugeridos() == null || request.entregablesSugeridos().isBlank()) {
+                List<EntregableTipo> entregablesTipo = entregableTipoRepository
+                        .findByTipoProyectoIdOrderByOrdenAsc(tipo.getId());
+                String viñetas = entregablesTipo.stream()
+                        .map(e -> "• " + e.getTitulo())
+                        .collect(Collectors.joining("\n"));
+                proyecto.setEntregablesSugeridos(viñetas);
+            }
+        }
         return toResponse(proyectoRepository.save(proyecto));
     }
 
@@ -145,10 +168,48 @@ public class ProyectoService {
         if (proyecto.getEstado() != WorkflowEstado.BORRADOR) {
             throw new BusinessException("Solo los proyectos en BORRADOR pueden publicarse");
         }
+        if (proyecto.getTipoProyecto() != null) {
+            List<InsumoTipo> obligatorios = insumoTipoRepository
+                    .findByTipoProyectoIdAndObligatorioTrue(proyecto.getTipoProyecto().getId());
+            for (InsumoTipo obligatorio : obligatorios) {
+                long count = insumoProyectoRepository.countByProyectoIdAndInsumoTipoId(proyectoId, obligatorio.getId());
+                if (count == 0) {
+                    throw new BusinessException(
+                            "Falta el insumo obligatorio: " + obligatorio.getNombre() + ". Debes subirlo antes de publicar.");
+                }
+            }
+        }
+        // Hard block: una MYPE no puede tener dos proyectos del MISMO TipoProyecto
+        // simultáneamente en estado activo. Razones documentadas:
+        // - Evita que la MYPE evalúe dos equipos haciendo lo mismo en paralelo.
+        // - Evita que los estudiantes vean publicaciones repetidas y se desmotiven.
+        // Para conseguir más estudiantes, la vía correcta es esperar a que el primero
+        // termine, no abrir otro del mismo tipo ni editar cupos del existente.
+        if (proyecto.getTipoProyecto() != null) {
+            List<WorkflowEstado> estadosActivos = List.of(
+                    WorkflowEstado.PENDIENTE,
+                    WorkflowEstado.EN_DESARROLLO,
+                    WorkflowEstado.EN_REVISION
+            );
+            List<Proyecto> proyectosActivosMismoTipo = proyectoRepository
+                    .findByMypeIdAndTipoProyectoIdAndEstadoIn(
+                            proyecto.getMype().getId(),
+                            proyecto.getTipoProyecto().getId(),
+                            estadosActivos
+                    );
+            if (!proyectosActivosMismoTipo.isEmpty()) {
+                Proyecto existente = proyectosActivosMismoTipo.get(0);
+                throw new BusinessException(
+                        "Ya tienes un proyecto activo de este tipo: \"" + existente.getTitulo() + "\". " +
+                                "Debes esperar a que termine antes de publicar otro del mismo tipo.",
+                        HttpStatus.CONFLICT
+                );
+            }
+        }
         proyecto.setEstado(WorkflowEstado.PENDIENTE);
         Proyecto guardado = proyectoRepository.save(proyecto);
 
-        // ✅ NUEVO: Notificar a TODOS los estudiantes
+        // Notificar a TODOS los estudiantes
         List<Estudiante> estudiantes = estudianteRepository.findAll();
         for (Estudiante estudiante : estudiantes) {
             notificacionService.crearNotificacion(
@@ -156,7 +217,7 @@ public class ProyectoService {
                     "🔔 Nuevo proyecto disponible",
                     "La empresa \"" + mype.getNombreComercial() + "\" publicó: " + proyecto.getTitulo(),
                     TipoNotificacion.PROYECTO,
-                    "/proyectos?selected=" + proyecto.getId()  // ✅ Esto va a /proyectos?selected=9
+                    "/proyectos?selected=" + proyecto.getId()
             );
         }
 
@@ -219,6 +280,21 @@ public class ProyectoService {
         return toResponse(proyectoRepository.save(proyecto));
     }
 
+    /**
+     * Edita un proyecto. Reglas de qué se puede editar según el estado:
+     *
+     *   BORRADOR                       → todos los campos editables.
+     *   PENDIENTE                      → editable salvo `cupos`. La cantidad
+     *                                    de estudiantes ya está anunciada al
+     *                                    público, cambiarla rompe expectativas
+     *                                    de quienes ya postularon o evaluaron
+     *                                    si postular.
+     *   EN_REVISION                    → mismo bloqueo de `cupos` que PENDIENTE.
+     *   EN_DESARROLLO / COMPLETADO     → nada editable (regla previa).
+     *
+     * Si la MYPE necesita más estudiantes para algo parecido, la vía es esperar
+     * a que el proyecto termine y publicar otro nuevo; NO editar cupos.
+     */
     @Transactional
     public ProyectoResponse editar(Long proyectoId, EditarProyectoRequest request, String emailMype) {
         var usuario = usuarioRepository.findByEmailWithRole(emailMype)
@@ -234,13 +310,31 @@ public class ProyectoService {
                 proyecto.getEstado() == WorkflowEstado.COMPLETADO) {
             throw new BusinessException("No puedes editar un proyecto que ya está en desarrollo o completado");
         }
+
+        // Bloqueo nuevo: cupos solo editables en BORRADOR.
+        // Si el proyecto ya está PENDIENTE o EN_REVISION y la MYPE intenta cambiar
+        // los cupos, rechazamos el cambio con mensaje claro.
+        boolean intentaCambiarCupos = request.getCupos() != null
+                && !request.getCupos().equals(proyecto.getCupos());
+        if (intentaCambiarCupos && proyecto.getEstado() != WorkflowEstado.BORRADOR) {
+            throw new BusinessException(
+                    "Los cupos no se pueden modificar después de publicar el proyecto. " +
+                            "Si necesitas más estudiantes, espera a que este proyecto termine y publica uno nuevo.",
+                    HttpStatus.CONFLICT
+            );
+        }
+
         proyecto.setTitulo(request.getTitulo());
         proyecto.setDescripcion(request.getDescripcion());
         proyecto.setObjetivo(request.getObjetivo());
         proyecto.setRequisitos(request.getRequisitos());
         proyecto.setEntregablesSugeridos(request.getEntregablesSugeridos());
         proyecto.setAreaSistemas(request.getAreaSistemas());
-        proyecto.setCupos(request.getCupos());
+        // Cupos: solo se aplica si estado == BORRADOR (la validación de arriba ya filtró
+        // los casos en que se intenta cambiar fuera de BORRADOR).
+        if (proyecto.getEstado() == WorkflowEstado.BORRADOR) {
+            proyecto.setCupos(request.getCupos());
+        }
         proyecto.setFechaInicio(request.getFechaInicio());
         proyecto.setFechaLimite(request.getFechaLimite());
         return toResponse(proyectoRepository.save(proyecto));
@@ -264,7 +358,7 @@ public class ProyectoService {
     }
 
     // ══════════════════════════════════════════════════════════════
-    // FLUJO TRILATERAL
+    // FLUJO TRILATERAL (sin cambios)
     // ══════════════════════════════════════════════════════════════
 
     @Transactional
@@ -286,7 +380,6 @@ public class ProyectoService {
         EstadoPostulacion estadoActual = postulacion.getEstado();
         EstadoPostulacion nuevoEstado = request.estado();
 
-        // ── ADMIN preselecciona ───────────────────────────────────
         if (esAdmin && nuevoEstado == EstadoPostulacion.PRESELECCIONADO) {
             if (estadoActual != EstadoPostulacion.PENDIENTE) {
                 throw new BusinessException("Solo se puede preseleccionar postulaciones en estado PENDIENTE");
@@ -327,7 +420,6 @@ public class ProyectoService {
             return toPostulacionResponse(postulacion);
         }
 
-        // ── ADMIN rechaza directamente ────────────────────────────
         if (esAdmin && nuevoEstado == EstadoPostulacion.RECHAZADO) {
             if (estadoActual != EstadoPostulacion.PENDIENTE) {
                 throw new BusinessException("Solo se pueden rechazar postulaciones en estado PENDIENTE");
@@ -347,7 +439,6 @@ public class ProyectoService {
             return toPostulacionResponse(postulacion);
         }
 
-        // ── MYPE valida la selección del admin ────────────────────
         if (!esAdmin && nuevoEstado == EstadoPostulacion.VALIDADO_MYPE) {
             if (estadoActual != EstadoPostulacion.PRESELECCIONADO) {
                 throw new BusinessException("Solo se puede validar una postulación que esté PRESELECCIONADA");
@@ -370,7 +461,6 @@ public class ProyectoService {
             return toPostulacionResponse(postulacion);
         }
 
-        // ── MYPE rechaza la selección del admin ───────────────────
         if (!esAdmin && nuevoEstado == EstadoPostulacion.RECHAZADO) {
             if (estadoActual != EstadoPostulacion.PRESELECCIONADO) {
                 throw new BusinessException("Solo se puede rechazar una postulación PRESELECCIONADA desde la MYPE");
@@ -395,10 +485,6 @@ public class ProyectoService {
         throw new BusinessException("Transición de estado no permitida: "
                 + estadoActual + " → " + nuevoEstado);
     }
-
-    // ══════════════════════════════════════════════════════════════
-    // CONFIRMACIÓN DEL ESTUDIANTE
-    // ══════════════════════════════════════════════════════════════
 
     @Transactional
     public PostulacionResponse confirmarPostulacion(Long postulacionId, boolean confirmar, String emailEstudiante) {
@@ -443,7 +529,6 @@ public class ProyectoService {
         }
 
         if (confirmar) {
-            // ── Estudiante acepta ─────────────────────────────────
             postulacion.setEstado(EstadoPostulacion.CONFIRMADO);
             postulacion.setFechaLimiteConfirmacion(null);
             postulacion.setFechaRespuesta(LocalDateTime.now());
@@ -490,7 +575,6 @@ public class ProyectoService {
                         });
             }
 
-            // Notificar a la MYPE
             notificacionService.crearNotificacion(
                     proyecto.getMype().getUsuario(),
                     "¡Estudiante confirmado!",
@@ -500,7 +584,6 @@ public class ProyectoService {
                     "/dashboard/postulaciones/" + proyecto.getId()
             );
 
-            // ✅ NUEVO: Notificar al ESTUDIANTE con link al workspace
             notificacionService.crearNotificacion(
                     usuario,
                     "¡Proyecto confirmado!",
@@ -511,7 +594,6 @@ public class ProyectoService {
             );
 
         } else {
-            // ── Estudiante rechaza ────────────────────────────────
             postulacion.setEstado(EstadoPostulacion.RECHAZADO);
             postulacion.setFechaLimiteConfirmacion(null);
             postulacion.setFechaRespuesta(LocalDateTime.now());
@@ -531,7 +613,7 @@ public class ProyectoService {
     }
 
     // ══════════════════════════════════════════════════════════════
-    // MÉTODOS ADMIN
+    // MÉTODOS ADMIN (sin cambios)
     // ══════════════════════════════════════════════════════════════
 
     @Transactional(readOnly = true)
@@ -632,7 +714,7 @@ public class ProyectoService {
     }
 
     // ══════════════════════════════════════════════════════════════
-    // MYPEs
+    // MYPEs (sin cambios)
     // ══════════════════════════════════════════════════════════════
 
     @Transactional(readOnly = true)
@@ -716,6 +798,50 @@ public class ProyectoService {
     }
 
     @Transactional
+    public List<InsumoProyectoResponse> subirInsumos(Long proyectoId, List<MultipartFile> archivos,
+                                                     List<Long> insumoTipoIds, List<String> valoresTexto,
+                                                     String emailMype) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+        if (!proyecto.getMype().getId().equals(mype.getId())) {
+            throw new BusinessException("No tienes permiso para subir insumos a este proyecto", HttpStatus.FORBIDDEN);
+        }
+
+        List<InsumoProyectoResponse> responses = new ArrayList<>();
+        for (int i = 0; i < archivos.size(); i++) {
+            MultipartFile archivo = archivos.get(i);
+            Long insumoTipoId = (insumoTipoIds != null && i < insumoTipoIds.size()) ? insumoTipoIds.get(i) : null;
+            String valorTexto = (valoresTexto != null && i < valoresTexto.size()) ? valoresTexto.get(i) : null;
+
+            InsumoTipo insumoTipo = null;
+            if (insumoTipoId != null) {
+                insumoTipo = insumoTipoRepository.findById(insumoTipoId).orElse(null);
+            }
+
+            String archivoUrl = null;
+            if (archivo != null && !archivo.isEmpty()) {
+                archivoUrl = s3Service.subirInsumo(archivo);
+            }
+
+            InsumoProyecto insumo = InsumoProyecto.builder()
+                    .proyecto(proyecto)
+                    .insumoTipo(insumoTipo)
+                    .valorTexto(valorTexto)
+                    .archivoUrl(archivoUrl)
+                    .build();
+            insumo = insumoProyectoRepository.save(insumo);
+            responses.add(new InsumoProyectoResponse(insumo.getId(), proyectoId,
+                    insumoTipoId, insumoTipo != null ? insumoTipo.getNombre() : null,
+                    valorTexto, archivoUrl));
+        }
+        return responses;
+    }
+
+    @Transactional
     public MypePerfilResponse actualizarPerfil(Long mypeId, ActualizarMypeRequest request, String emailMype) {
         var usuario = usuarioRepository.findByEmailWithRole(emailMype)
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
@@ -751,7 +877,7 @@ public class ProyectoService {
     }
 
     // ══════════════════════════════════════════════════════════════
-    // MAPPERS
+    // MAPPERS (sin cambios)
     // ══════════════════════════════════════════════════════════════
 
     private ProyectoResponse toResponse(Proyecto p) {

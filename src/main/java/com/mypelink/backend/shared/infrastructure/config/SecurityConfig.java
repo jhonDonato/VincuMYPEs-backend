@@ -51,6 +51,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/certificados/**").authenticated()
                         .requestMatchers("/api/notificaciones/**").authenticated()
                         .requestMatchers("/api/entregables/**").authenticated()
+                        .requestMatchers("/api/tipos-proyecto/**").authenticated()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session ->

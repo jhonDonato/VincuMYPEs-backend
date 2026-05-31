@@ -92,5 +92,9 @@ public class Proyecto {
     protected void onUpdate() {
         this.fechaActualizacion = LocalDateTime.now();
     }
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "tipo_proyecto_id")
+    private TipoProyecto tipoProyecto;
 }
 

@@ -1,5 +1,13 @@
 package com.mypelink.backend.usuarios.application.service;
 
+import com.mypelink.backend.ejecucion.domain.model.Evaluacion;
+import com.mypelink.backend.ejecucion.domain.repository.EvaluacionRepository;
+import com.mypelink.backend.proyectos.domain.model.Postulacion;
+import com.mypelink.backend.proyectos.domain.model.Proyecto;
+import com.mypelink.backend.proyectos.domain.repository.PostulacionRepository;
+import com.mypelink.backend.proyectos.domain.repository.ProyectoRepository;
+import com.mypelink.backend.shared.domain.enums.EstadoPostulacion;
+import com.mypelink.backend.shared.domain.enums.WorkflowEstado;
 import com.mypelink.backend.usuarios.application.dto.AdminUsuarioResponse;
 import com.mypelink.backend.usuarios.domain.model.Estudiante;
 import com.mypelink.backend.usuarios.domain.model.Mype;
@@ -23,17 +31,22 @@ public class AdminUsuarioService {
     private final UsuarioRepository usuarioRepository;
     private final EstudianteRepository estudianteRepository;
     private final MypeRepository mypeRepository;
+    private final ProyectoRepository proyectoRepository;
+    private final PostulacionRepository postulacionRepository;
+    private final EvaluacionRepository evaluacionRepository;
 
     @Transactional(readOnly = true)
     public List<AdminUsuarioResponse> listarUsuarios() {
         return usuarioRepository.findAll().stream().map(u -> {
             String rolCompleto = u.getRol().getNombre();
             String rolSimplificado = rolCompleto.replace("ROLE_", "");
-            
+
             String estado = u.getActivo() ? "ACTIVO" : "SUSPENDIDO";
             String carrera = null;
             String sector = null;
             Integer limiteProyectos = null;
+            Double promedioEstrellas = null;    // ← declarado
+            Long proyectosCompletados = null;   // ← declarado
 
             if (rolCompleto.equals("ROLE_ESTUDIANTE")) {
                 var estudianteOpt = estudianteRepository.findByUsuarioId(u.getId());
@@ -41,6 +54,21 @@ public class AdminUsuarioService {
                     Estudiante est = estudianteOpt.get();
                     carrera = est.getCarrera();
                     limiteProyectos = est.getLimiteProyectos();
+
+                    // Calcular reputación
+                    List<Postulacion> postulaciones = postulacionRepository
+                            .findByEstudianteIdWithDetails(est.getId());
+                    long completados = postulaciones.stream()
+                            .filter(p -> p.getEstado() == EstadoPostulacion.CONFIRMADO)
+                            .count();
+                    List<Evaluacion> evaluaciones = evaluacionRepository
+                            .findByEstudianteId(est.getId());
+                    double promedio = evaluaciones.stream()
+                            .mapToDouble(e -> (e.getPuntualidad() + e.getCalidadTrabajo() + e.getComunicacion()) / 3.0)
+                            .average()
+                            .orElse(0.0);
+                    promedioEstrellas = Math.round(promedio * 10.0) / 10.0;
+                    proyectosCompletados = completados;
                 }
             } else if (rolCompleto.equals("ROLE_MYPE")) {
                 var mypeOpt = mypeRepository.findByUsuarioId(u.getId());
@@ -58,7 +86,9 @@ public class AdminUsuarioService {
                     estado,
                     carrera,
                     sector,
-                    limiteProyectos
+                    limiteProyectos,
+                    promedioEstrellas,      // ← nuevo campo
+                    proyectosCompletados    // ← nuevo campo
             );
         }).collect(Collectors.toList());
     }
@@ -67,7 +97,7 @@ public class AdminUsuarioService {
     public void cambiarEstadoUsuario(Long usuarioId) {
         Usuario usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
-        
+
         if (usuario.getRol().getNombre().equals("ROLE_ADMIN")) {
             throw new BusinessException("No se pueden suspender cuentas de administradores");
         }
@@ -84,19 +114,53 @@ public class AdminUsuarioService {
             mypeRepository.findByUsuarioId(usuarioId).ifPresent(m -> {
                 m.setActivo(usuario.getActivo());
                 mypeRepository.save(m);
+                if (!usuario.getActivo()) {
+                    List<Proyecto> proyectos = proyectoRepository.findByMypeId(m.getId());
+                    for (Proyecto p : proyectos) {
+                        if (p.getEstado() != WorkflowEstado.COMPLETADO
+                                && p.getEstado() != WorkflowEstado.BORRADOR) {
+                            p.setEstado(WorkflowEstado.COMPLETADO);
+                            proyectoRepository.save(p);
+                        }
+                    }
+                }
             });
         }
     }
 
     @Transactional
     public void cambiarBypassLimite(Long usuarioId, Integer nuevoLimite) {
-        if (nuevoLimite == null || nuevoLimite < 1) {
-            throw new BusinessException("El límite de proyectos debe ser al menos 1");
+        if (nuevoLimite == null || nuevoLimite < 1 || nuevoLimite > 3) {
+            throw new BusinessException("El límite debe estar entre 1 y 3");
         }
-        
+
         Estudiante estudiante = estudianteRepository.findByUsuarioId(usuarioId)
                 .orElseThrow(() -> new ResourceNotFoundException("Perfil de estudiante no encontrado"));
-        
+
+        // Validar reputación para bypass a 2 o 3
+        if (nuevoLimite > 1) {
+            List<Postulacion> postulaciones = postulacionRepository
+                    .findByEstudianteIdWithDetails(estudiante.getId());
+            long completados = postulaciones.stream()
+                    .filter(p -> p.getEstado() == EstadoPostulacion.CONFIRMADO)
+                    .count();
+            List<Evaluacion> evaluaciones = evaluacionRepository
+                    .findByEstudianteId(estudiante.getId());
+            double promedio = evaluaciones.stream()
+                    .mapToDouble(e -> (e.getPuntualidad() + e.getCalidadTrabajo() + e.getComunicacion()) / 3.0)
+                    .average()
+                    .orElse(0.0);
+
+            if (nuevoLimite >= 2 && (promedio < 4.0 || completados < 4)) {
+                throw new BusinessException(
+                        "El estudiante necesita 4+ estrellas y al menos 4 proyectos completados para acceder a 2 proyectos simultáneos");
+            }
+            if (nuevoLimite == 3 && (promedio < 4.0 || completados < 15)) {
+                throw new BusinessException(
+                        "Se requieren 15+ proyectos completados y 4+ estrellas para acceder a 3 proyectos");
+            }
+        }
+
         estudiante.setLimiteProyectos(nuevoLimite);
         estudianteRepository.save(estudiante);
     }

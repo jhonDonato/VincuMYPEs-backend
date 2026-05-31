@@ -1,13 +1,15 @@
 package com.mypelink.backend.proyectos.application.dto;
 
-public record TipoProyectoResponse(
-        Long id,
-        String codigo,
-        String nombre,
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+public record TipoProyectoRequest(
+        @NotBlank String codigo,
+        @NotBlank String nombre,
         String descripcionMype,
         String descripcionEstudiante,
-        String rama,
-        Integer cicloMinimo,
+        @NotBlank String rama,
+        @NotNull Integer cicloMinimo,
         String areaSistemas,
         Integer cuposMin,
         Integer cuposMax,
@@ -16,6 +18,5 @@ public record TipoProyectoResponse(
         String complejidad,
         Integer esfuerzoHPers,
         String alcanceIncluye,
-        String alcanceNoIncluye,
-        Boolean activo
+        String alcanceNoIncluye
 ) {}

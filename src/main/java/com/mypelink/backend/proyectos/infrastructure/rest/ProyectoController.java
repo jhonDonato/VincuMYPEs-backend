@@ -7,11 +7,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -148,5 +150,16 @@ public class ProyectoController {
 
         return ResponseEntity.ok(proyectoService.confirmarPostulacion(
                 postulacionId, confirmar, userDetails.getUsername()));
+    }
+
+    @PostMapping(value = "/{id}/insumos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
+    public ResponseEntity<List<InsumoProyectoResponse>> subirInsumos(
+            @PathVariable Long id,
+            @RequestParam("archivos") List<MultipartFile> archivos,
+            @RequestParam(value = "insumoTipoIds", required = false) List<Long> insumoTipoIds,
+            @RequestParam(value = "valoresTexto", required = false) List<String> valoresTexto,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(proyectoService.subirInsumos(id, archivos, insumoTipoIds, valoresTexto, userDetails.getUsername()));
     }
 }

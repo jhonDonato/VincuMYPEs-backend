@@ -140,6 +140,26 @@ public class S3Service {
         }
     }
 
+    public String subirInsumo(MultipartFile file) {
+        if (file.isEmpty()) {
+            throw new BusinessException("El archivo está vacío.");
+        }
+        String fileName = "insumos/" + UUID.randomUUID() + "_" + file.getOriginalFilename().replace(" ", "_");
+        try {
+            PutObjectRequest putOb = PutObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(fileName)
+                    .contentType(file.getContentType())
+                    .build();
+            s3Client.putObject(putOb, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
+            return "https://" + bucketName + ".s3." + region + ".amazonaws.com/" + fileName;
+        } catch (IOException e) {
+            throw new BusinessException("Ocurrió un error al procesar el archivo.");
+        } catch (Exception e) {
+            throw new BusinessException("Error de conexión con AWS S3: " + e.getMessage());
+        }
+    }
+
     public String subirImagenPerfil(MultipartFile file) {
         if (file.isEmpty()) {
             throw new BusinessException("La imagen está vacía.");

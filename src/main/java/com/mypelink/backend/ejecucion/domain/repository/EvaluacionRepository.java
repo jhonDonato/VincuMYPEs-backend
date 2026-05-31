@@ -10,4 +10,6 @@ public interface EvaluacionRepository extends JpaRepository<Evaluacion, Long> {
 
     @Query("SELECT e FROM Evaluacion e JOIN FETCH e.proyecto p JOIN FETCH e.estudiante est JOIN FETCH est.usuario u JOIN FETCH e.evaluadoPor m ORDER BY e.fechaEvaluacion DESC")
     List<Evaluacion> findAllWithDetails();
+
+    List<Evaluacion> findByEstudianteId(Long estudianteId);
 }
