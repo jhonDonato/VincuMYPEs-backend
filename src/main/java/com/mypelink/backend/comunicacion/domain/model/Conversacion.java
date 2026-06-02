@@ -6,6 +6,7 @@ import com.mypelink.backend.usuarios.domain.model.Usuario;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
+import com.mypelink.backend.shared.domain.enums.TipoConversacion;
 
 @Entity
 @Table(
@@ -37,6 +38,11 @@ public class Conversacion {
 
     @Column(length = 100)
     private String asunto;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tipo", nullable = false, length = 20)
+    @Builder.Default
+    private TipoConversacion tipo = TipoConversacion.PRIVADA;
 
     @Column(name = "ultimo_mensaje", columnDefinition = "TEXT")
     private String ultimoMensaje;

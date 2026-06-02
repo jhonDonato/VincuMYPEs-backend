@@ -14,5 +14,7 @@ public record PostulacionResponse(
         String mensajePostulacion,
         LocalDateTime fechaPostulacion,
         String estudianteCvUrl,
-        LocalDateTime fechaLimiteConfirmacion
+        LocalDateTime fechaLimiteConfirmacion,
+        // ✅ NUEVO: Campo de delegado
+        Boolean esDelegado
 ) {}

@@ -55,6 +55,10 @@ public class Postulacion {
     @Column(name = "fecha_limite_confirmacion")
     private LocalDateTime fechaLimiteConfirmacion;
 
+    @Column(name = "es_delegado", nullable = false)
+    @Builder.Default
+    private Boolean esDelegado = false;
+
     @PrePersist
     protected void onCreate() {
         this.fechaPostulacion = LocalDateTime.now();

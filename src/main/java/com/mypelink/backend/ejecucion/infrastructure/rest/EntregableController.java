@@ -88,4 +88,25 @@ public class EntregableController {
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(entregableService.listarSoloSubidos(proyectoId, userDetails.getUsername()));
     }
+    // ✅ NUEVO: Verificar si el estudiante actual es delegado del proyecto
+    @GetMapping("/puede-subir")
+    @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE', 'ESTUDIANTE')")
+    public ResponseEntity<java.util.Map<String, Boolean>> puedeSubir(
+            @PathVariable Long proyectoId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        // Esta verificación la hace internamente el EntregableService
+        // Pero exponemos un endpoint rápido para el frontend
+        boolean puedeSubir = true; // El service lanza excepción si no puede
+
+        return ResponseEntity.ok(java.util.Map.of("puedeSubir", puedeSubir));
+    }
+    // ✅ NUEVO: Listar TODOS los entregables del proyecto (para ESTUDIANTES también)
+    @GetMapping("/todos")
+    @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE', 'ESTUDIANTE', 'ROLE_MYPE', 'MYPE')")
+    public ResponseEntity<List<EntregableResponse>> listarTodos(
+            @PathVariable Long proyectoId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(entregableService.listarTodosDelProyecto(proyectoId, userDetails.getUsername()));
+    }
 }

@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import com.mypelink.backend.usuarios.domain.repository.EstudianteRepository;
 import com.mypelink.backend.proyectos.domain.repository.ProyectoRepository;
-
+import com.mypelink.backend.shared.domain.enums.TipoConversacion;
 @Service
 @RequiredArgsConstructor
 public class MensajeService {
@@ -61,6 +61,8 @@ public class MensajeService {
                     .estudiante(estudiante)
                     .mypeUsuario(proyecto.getMype().getUsuario())
                     .asunto("Proyecto: " + proyecto.getTitulo())
+                    // ✅ NUEVO: Siempre PRIVADA (los chats grupales van en otra tabla)
+                    .tipo(TipoConversacion.PRIVADA)
                     .build());
 
         } else {

@@ -31,6 +31,8 @@ import com.mypelink.backend.proyectos.domain.model.EntregableTipo;
 
 import com.mypelink.backend.usuarios.domain.model.Estudiante;
 import org.springframework.web.multipart.MultipartFile;
+import com.mypelink.backend.proyectos.application.service.VotacionService;
+import com.mypelink.backend.comunicacion.application.service.ChatGrupalService;
 
 @Service
 @RequiredArgsConstructor
@@ -48,6 +50,8 @@ public class ProyectoService {
     private final InsumoTipoRepository insumoTipoRepository;
     private final InsumoProyectoRepository insumoProyectoRepository;
     private final S3Service s3Service;
+    private final VotacionService votacionService;
+    private final ChatGrupalService chatGrupalService;
 
     private static final int HORAS_PLAZO = 12;
 
@@ -549,6 +553,22 @@ public class ProyectoService {
                         .estadoAnterior(estadoAnterior).estadoNuevo(WorkflowEstado.EN_DESARROLLO)
                         .comentario("Cupos cubiertos. Estudiante " + usuario.getNombre() + " confirmó.")
                         .build());
+                // ═══════════════════════════════════════════
+                // ✅ NUEVO: Iniciar votación de delegado
+                // ═══════════════════════════════════════════
+                try {
+                    votacionService.iniciarVotacion(proyecto.getId());
+                } catch (Exception e) {
+                    // Si falla la votación, no bloquear el flujo
+                    System.err.println("Error al iniciar votación: " + e.getMessage());
+                }
+
+                // ✅ NUEVO: Crear chats grupales
+                try {
+                    chatGrupalService.crearChatsParaProyecto(proyecto.getId());
+                } catch (Exception e) {
+                    System.err.println("Error al crear chats: " + e.getMessage());
+                }
 
                 List<EstadoPostulacion> estadosActivos = List.of(
                         EstadoPostulacion.PENDIENTE,
@@ -897,7 +917,9 @@ public class ProyectoService {
                 p.getEstudiante().getId(), p.getEstudiante().getUsuario().getNombre(),
                 p.getEstado(), p.getMensajePostulacion(), p.getFechaPostulacion(),
                 p.getEstudiante().getCvUrl(),
-                p.getFechaLimiteConfirmacion()
+                p.getFechaLimiteConfirmacion(),
+                // ✅ AGREGAR ESTA LÍNEA:
+                p.getEsDelegado()
         );
     }
 }

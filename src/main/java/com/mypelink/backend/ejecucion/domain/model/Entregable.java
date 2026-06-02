@@ -6,6 +6,7 @@ import com.mypelink.backend.shared.domain.enums.EstadoEntregable;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
+import com.mypelink.backend.usuarios.domain.model.Usuario;
 
 @Entity
 @Table(name = "entregables")
@@ -27,6 +28,10 @@ public class Entregable {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "estudiante_id", nullable = false)
     private Estudiante estudiante;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "subido_por_usuario_id")
+    private Usuario subidoPor;
 
     @Column(length = 500)
     private String titulo;
