@@ -1,5 +1,6 @@
 package com.mypelink.backend.certificaciones.application.service;
 
+import com.mypelink.backend.auth.recovery.application.service.EmailService;
 import com.mypelink.backend.certificaciones.application.dto.CertificadoResponse;
 import com.mypelink.backend.certificaciones.application.dto.EmitirCertificadoRequest;
 import com.mypelink.backend.certificaciones.domain.model.Certificado;
@@ -14,6 +15,7 @@ import com.mypelink.backend.shared.infrastructure.exception.ResourceNotFoundExce
 import com.mypelink.backend.usuarios.domain.model.Usuario;
 import com.mypelink.backend.usuarios.domain.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +31,7 @@ public class CertificadoService {
     private final ProyectoRepository proyectoRepository;
     private final PostulacionRepository postulacionRepository;
     private final UsuarioRepository usuarioRepository;
+    private final EmailService emailService;
 
     @Transactional
     public CertificadoResponse emitirCertificado(String emailMype, EmitirCertificadoRequest request) {
@@ -102,6 +105,30 @@ public class CertificadoService {
                 certificado.getDescripcionCertificado(),
                 certificado.getFechaEmision(),
                 certificado.getUrlCertificado()
+        );
+    }
+
+    @Transactional
+    public void enviarCertificado(Long certificadoId, String emailMype) {
+        var certificado = certificadoRepository.findById(certificadoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Certificado", certificadoId));
+
+        // Verificar que la MYPE es la emisora
+        if (!certificado.getEmitidoPor().getEmail().equals(emailMype)) {
+            throw new BusinessException("No tienes permiso para enviar este certificado",
+                    HttpStatus.FORBIDDEN);
+        }
+
+        var estudianteEmail = certificado.getEstudiante().getUsuario().getEmail();
+        var estudianteNombre = certificado.getEstudiante().getUsuario().getNombre();
+        var empresaNombre = certificado.getEmitidoPor().getNombre();
+
+        emailService.enviarCertificado(
+                estudianteEmail,
+                estudianteNombre,
+                certificado.getTituloCertificado(),
+                empresaNombre,
+                certificado.getCodigo()
         );
     }
 }

@@ -43,4 +43,13 @@ public class CertificadoController {
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(certificadoService.listarCertificadosEmitidos(userDetails.getUsername()));
     }
+
+    @PostMapping("/{id}/enviar")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
+    public ResponseEntity<Void> enviar(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        certificadoService.enviarCertificado(id, userDetails.getUsername());
+        return ResponseEntity.noContent().build();
+    }
 }

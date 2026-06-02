@@ -105,4 +105,44 @@ public class EmailService {
         </div>
         """.formatted(nombreUsuario, titulo, mensaje);
     }
+
+    public void enviarCertificado(String emailDestinatario, String nombreEstudiante,
+                                  String tituloCertificado, String nombreEmpresa,
+                                  String codigoCertificado) {
+        try {
+            CreateEmailOptions params = CreateEmailOptions.builder()
+                    .from(fromEmail)
+                    .to(emailDestinatario)
+                    .subject("🎓 Tu certificado de participación — " + nombreEmpresa)
+                    .html(buildCertificadoEmail(nombreEstudiante, tituloCertificado,
+                            nombreEmpresa, codigoCertificado))
+                    .build();
+            resend.emails().send(params);
+        } catch (Exception e) {
+            log.error("Error enviando certificado a {}: {}", emailDestinatario, e.getMessage());
+        }
+    }
+
+    private String buildCertificadoEmail(String nombreEstudiante, String titulo,
+                                         String empresa, String codigo) {
+        return """
+        <div style="font-family:'Outfit',sans-serif;max-width:600px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #E5E7EB">
+          <div style="background:linear-gradient(135deg,#0A1628,#1B6FE8);padding:32px;text-align:center">
+            <h1 style="color:#fff;margin:0;font-size:24px">🎓 VincuMYPEs</h1>
+            <p style="color:rgba(255,255,255,0.7);margin:8px 0 0;font-size:14px">Certificado de Participación</p>
+          </div>
+          <div style="padding:32px;text-align:center">
+            <p style="color:#6B7280;font-size:14px;margin:0 0 8px">Felicitaciones,</p>
+            <h2 style="color:#0F1F3D;font-size:22px;margin:0 0 16px">%s</h2>
+            <p style="color:#6B7280;font-size:14px;margin:0 0 8px">Tu certificado por participación en:</p>
+            <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px 20px;margin:0 0 24px;display:inline-block">
+              <strong style="color:#1D4ED8;font-size:15px">%s</strong>
+            </div>
+            <p style="color:#6B7280;font-size:13px;margin:0 0 4px">Emitido por: <strong style="color:#374151">%s</strong></p>
+            <p style="color:#9CA3AF;font-size:12px;font-family:monospace;margin:0 0 24px">Código de verificación: %s</p>
+            <p style="color:#9CA3AF;font-size:12px;margin:0">Ingresa a VincuMYPEs para ver y descargar tu certificado.</p>
+          </div>
+        </div>
+    """.formatted(nombreEstudiante, titulo, empresa, codigo);
+    }
 }
