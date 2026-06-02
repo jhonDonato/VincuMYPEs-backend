@@ -52,6 +52,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/notificaciones/**").authenticated()
                         .requestMatchers("/api/entregables/**").authenticated()
                         .requestMatchers("/api/tipos-proyecto/**").authenticated()
+                        .requestMatchers("/api/mensajes/**").authenticated()
+                        .requestMatchers("/api/mypes/**").authenticated()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session ->

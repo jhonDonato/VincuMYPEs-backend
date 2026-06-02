@@ -705,6 +705,39 @@ public class ProyectoService {
         return toPostulacionResponse(postulacion);
     }
 
+    @Transactional
+    public ProyectoResponse completarProyecto(Long proyectoId, String emailMype) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        if (!proyecto.getMype().getId().equals(mype.getId())) {
+            throw new BusinessException("No tienes permiso para completar este proyecto", HttpStatus.FORBIDDEN);
+        }
+        if (proyecto.getEstado() != WorkflowEstado.EN_DESARROLLO) {
+            throw new BusinessException("Solo puedes completar proyectos que están en desarrollo");
+        }
+
+        proyecto.setEstado(WorkflowEstado.COMPLETADO);
+        var guardado = proyectoRepository.save(proyecto);
+
+        // Notificar a los estudiantes confirmados
+        postulacionRepository.findByProyectoIdAndEstadoWithDetails(
+                proyectoId, EstadoPostulacion.CONFIRMADO
+        ).forEach(p -> notificacionService.crearNotificacion(
+                p.getEstudiante().getUsuario(),
+                "🎉 Proyecto completado",
+                "El proyecto \"" + proyecto.getTitulo() + "\" ha sido marcado como completado.",
+                TipoNotificacion.PROYECTO,
+                "/certificados"
+        ));
+
+        return toResponse(guardado);
+    }
+
     // ══════════════════════════════════════════════════════════════
     // MÉTODOS ADMIN (sin cambios)
     // ══════════════════════════════════════════════════════════════
