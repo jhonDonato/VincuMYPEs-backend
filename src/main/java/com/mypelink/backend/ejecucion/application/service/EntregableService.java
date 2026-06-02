@@ -28,6 +28,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.stream.Collectors;
+import com.mypelink.backend.usuarios.domain.model.Usuario;
+import com.mypelink.backend.proyectos.domain.model.Postulacion;
 
 @Service
 @RequiredArgsConstructor
@@ -52,23 +54,35 @@ public class EntregableService {
         var proyecto = proyectoRepository.findById(proyectoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
 
-        boolean postulacionAceptada = postulacionRepository
+        // ✅ ÚNICA validación (completa)
+        var postulacion = postulacionRepository
                 .findByProyectoIdAndEstudianteId(proyectoId, estudiante.getId())
-                .map(p -> p.getEstado() == EstadoPostulacion.CONFIRMADO)
-                .orElse(false);
+                .orElseThrow(() -> new BusinessException("No eres parte de este proyecto"));
 
-        if (!postulacionAceptada) {
-            throw new BusinessException("Solo estudiantes aceptados pueden subir entregables");
+        // Validar que esté confirmado
+        if (postulacion.getEstado() != EstadoPostulacion.CONFIRMADO) {
+            throw new BusinessException("Solo estudiantes confirmados pueden subir entregables");
+        }
+
+        // Validar que sea el delegado
+        if (postulacion.getEsDelegado() == null || !postulacion.getEsDelegado()) {
+            throw new BusinessException(
+                    "Solo el delegado del equipo puede subir entregables. " +
+                            "El delegado es elegido por votación del equipo.",
+                    HttpStatus.FORBIDDEN
+            );
         }
 
         String archivoUrl = s3Service.subirEntregablePdf(archivo);
 
+        // ✅ Guardar con subidoPor
         var entregable = entregableRepository.save(Entregable.builder()
                 .proyecto(proyecto)
                 .estudiante(estudiante)
                 .titulo(titulo)
                 .descripcion(descripcion)
                 .archivo(archivoUrl)
+                .subidoPor(usuario)  // ← AGREGADO
                 .build());
 
         notificacionService.crearNotificacion(
@@ -197,6 +211,11 @@ public class EntregableService {
             archivoNombre = parts[parts.length - 1];
             archivoNombre = archivoNombre.replace("_", " ").replace("%20", " ");
         }
+        // ✅ NUEVO: Obtener nombre de quién subió
+        String subidoPorNombre = null;
+        if (e.getSubidoPor() != null) {
+            subidoPorNombre = e.getSubidoPor().getNombre();
+        }
 
         return new EntregableResponse(
                 e.getId(),
@@ -210,7 +229,11 @@ public class EntregableService {
                 e.getEstado(),
                 e.getObservaciones(),
                 e.getFechaEntrega(),
-                archivoNombre);
+                archivoNombre,
+                // ✅ NUEVOS CAMPOS
+                subidoPorNombre,
+                null  // esDelegado se resuelve desde Postulacion
+        );
     }
 
     @Transactional
@@ -269,20 +292,25 @@ public class EntregableService {
         return result;
     }
 
-    private EntregableResponse crearEntregableVirtual(com.mypelink.backend.proyectos.domain.model.Proyecto proyecto, String titulo) {
+    private EntregableResponse crearEntregableVirtual(
+            com.mypelink.backend.proyectos.domain.model.Proyecto proyecto,
+            String titulo) {
+
         return new EntregableResponse(
-                null,
-                proyecto.getId(),
-                proyecto.getTitulo(),
-                null,
-                null,
-                titulo,
-                null,
-                null,
-                EstadoEntregable.PENDIENTE,
-                null,
-                null,
-                null
+                null,                           // id
+                proyecto.getId(),               // proyectoId
+                proyecto.getTitulo(),          // proyectoTitulo
+                null,                           // estudianteId
+                null,                           // estudianteNombre
+                titulo,                         // titulo
+                null,                           // descripcion
+                null,                           // archivo
+                EstadoEntregable.PENDIENTE,     // estado
+                null,                           // observaciones
+                null,                           // fechaEntrega
+                null,                           // archivoNombre
+                null,                           // subidoPorNombre
+                false                           // esDelegado
         );
     }
 
@@ -302,5 +330,57 @@ public class EntregableService {
 
         return entregableRepository.findByProyectoIdWithDetails(proyectoId)
                 .stream().map(this::toResponse).collect(Collectors.toList());
+    }
+    // ✅ NUEVO: Listar TODOS los entregables (para cualquier miembro del proyecto)
+    @Transactional(readOnly = true)
+    public List<EntregableResponse> listarTodosDelProyecto(Long proyectoId, String emailUsuario) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailUsuario)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        // Verificar que el usuario pertenece al proyecto
+        boolean esMype = false;
+        boolean esEstudiante = false;
+
+        if (usuario.getRol().getNombre().equals("ROLE_MYPE") || usuario.getRol().getNombre().equals("MYPE")) {
+            var mype = mypeRepository.findByUsuarioId(usuario.getId());
+            esMype = mype.isPresent() && proyecto.getMype().getId().equals(mype.get().getId());
+        } else {
+            var estudiante = estudianteRepository.findByUsuarioId(usuario.getId());
+            if (estudiante.isPresent()) {
+                esEstudiante = postulacionRepository
+                        .findByProyectoIdAndEstudianteId(proyectoId, estudiante.get().getId())
+                        .map(p -> p.getEstado() == EstadoPostulacion.CONFIRMADO)
+                        .orElse(false);
+            }
+        }
+
+        if (!esMype && !esEstudiante) {
+            throw new BusinessException("No tienes permiso para ver estos entregables", HttpStatus.FORBIDDEN);
+        }
+
+        // Obtener entregables reales
+        List<Entregable> entregablesReales = entregableRepository.findByProyectoIdWithDetails(proyectoId);
+
+        // Obtener entregables sugeridos
+        List<String> entregablesSugeridos = obtenerEntregablesSugeridos(proyecto);
+        Set<String> titulosReales = entregablesReales.stream()
+                .map(Entregable::getTitulo)
+                .collect(Collectors.toSet());
+
+        List<EntregableResponse> resultado = new ArrayList<>();
+
+        for (Entregable real : entregablesReales) {
+            resultado.add(toResponse(real));
+        }
+
+        for (String tituloSugerido : entregablesSugeridos) {
+            if (!titulosReales.contains(tituloSugerido)) {
+                resultado.add(crearEntregableVirtual(proyecto, tituloSugerido));
+            }
+        }
+
+        return resultado;
     }
 }

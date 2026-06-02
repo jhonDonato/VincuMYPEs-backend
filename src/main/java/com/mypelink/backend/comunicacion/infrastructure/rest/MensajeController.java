@@ -61,4 +61,13 @@ public class MensajeController {
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(mensajeService.enviarMensaje(id, request, userDetails.getUsername()));
     }
+    // ✅ NUEVO: Crear conversación desde el workspace
+    @PostMapping("/iniciar")
+    @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE','ESTUDIANTE')")
+    public ResponseEntity<ConversacionResponse> iniciarConversacion(
+            @RequestBody CrearConversacionRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(mensajeService.crearConversacion(request, userDetails.getUsername()));
+    }
 }

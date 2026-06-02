@@ -14,5 +14,6 @@ public record PostulacionResponse(
         LocalDateTime fechaPostulacion,
         String estudianteCvUrl,
         LocalDateTime fechaLimiteConfirmacion,
-        boolean estudianteOcupado
+        boolean estudianteOcupado,   // ← Campo de Enzo (ocupado)
+        Boolean esDelegado           // ← Campo de Jhon (delegado)
 ) {}

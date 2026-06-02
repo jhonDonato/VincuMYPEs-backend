@@ -8,6 +8,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import com.mypelink.backend.shared.domain.enums.FaseVotacion;
 
 @Entity
 @Table(name = "proyectos")
@@ -92,6 +93,10 @@ public class Proyecto {
     protected void onUpdate() {
         this.fechaActualizacion = LocalDateTime.now();
     }
+    @Enumerated(EnumType.STRING)
+    @Column(name = "fase_votacion", nullable = false, length = 20)
+    @Builder.Default
+    private FaseVotacion faseVotacion = FaseVotacion.SIN_VOTACION;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tipo_proyecto_id")
