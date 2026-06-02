@@ -22,6 +22,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -112,6 +114,9 @@ public class ProyectoService {
                 proyecto.setEntregablesSugeridos(viñetas);
             }
         }
+        if (request.diasEstimados() != null) {
+            proyecto.setDiasEstimados(request.diasEstimados());
+        }
         return toResponse(proyectoRepository.save(proyecto));
     }
 
@@ -130,11 +135,13 @@ public class ProyectoService {
         if (postulacionRepository.existsByProyectoIdAndEstudianteId(proyectoId, estudiante.getId())) {
             throw new BusinessException("Ya postulaste a este proyecto");
         }
-        long proyectosActivos = postulacionRepository.countByEstudianteIdAndEstado(
-                estudiante.getId(), EstadoPostulacion.CONFIRMADO);
+        long proyectosActivos = contarProyectosActivosDelEstudiante(estudiante.getId());
         int maxProyectos = estudiante.getLimiteProyectos();
         if (proyectosActivos >= maxProyectos) {
-            throw new BusinessException("No puedes tener más de " + maxProyectos + " proyectos activos simultáneamente");
+            throw new BusinessException(
+                    "Alcanzaste tu límite de proyectos activos. Termina alguno antes de postular a otro.",
+                    HttpStatus.CONFLICT
+            );
         }
 
         var postulacion = postulacionRepository.save(Postulacion.builder()
@@ -310,6 +317,15 @@ public class ProyectoService {
                 proyecto.getEstado() == WorkflowEstado.COMPLETADO) {
             throw new BusinessException("No puedes editar un proyecto que ya está en desarrollo o completado");
         }
+        // Bloqueo: díasEstimados solo editable en BORRADOR
+        boolean intentaCambiarDias = request.getDiasEstimados() != null
+                && !request.getDiasEstimados().equals(proyecto.getDiasEstimados());
+        if (intentaCambiarDias && proyecto.getEstado() != WorkflowEstado.BORRADOR) {
+            throw new BusinessException(
+                    "Los días de duración no se pueden modificar después de publicar.",
+                    HttpStatus.CONFLICT
+            );
+        }
 
         // Bloqueo nuevo: cupos solo editables en BORRADOR.
         // Si el proyecto ya está PENDIENTE o EN_REVISION y la MYPE intenta cambiar
@@ -334,6 +350,9 @@ public class ProyectoService {
         // los casos en que se intenta cambiar fuera de BORRADOR).
         if (proyecto.getEstado() == WorkflowEstado.BORRADOR) {
             proyecto.setCupos(request.getCupos());
+        }
+        if (request.getDiasEstimados() != null) {
+            proyecto.setDiasEstimados(request.getDiasEstimados());
         }
         proyecto.setFechaInicio(request.getFechaInicio());
         proyecto.setFechaLimite(request.getFechaLimite());
@@ -381,6 +400,15 @@ public class ProyectoService {
         EstadoPostulacion nuevoEstado = request.estado();
 
         if (esAdmin && nuevoEstado == EstadoPostulacion.PRESELECCIONADO) {
+            long activos = contarProyectosActivosDelEstudiante(postulacion.getEstudiante().getId());
+            int limite = postulacion.getEstudiante().getLimiteProyectos();
+            if (activos >= limite) {
+                throw new BusinessException(
+                        "Este estudiante ya alcanzó su límite de proyectos activos. " +
+                                "No puede ser preseleccionado.",
+                        HttpStatus.CONFLICT
+                );
+            }
             if (estadoActual != EstadoPostulacion.PENDIENTE) {
                 throw new BusinessException("Solo se puede preseleccionar postulaciones en estado PENDIENTE");
             }
@@ -440,8 +468,23 @@ public class ProyectoService {
         }
 
         if (!esAdmin && nuevoEstado == EstadoPostulacion.VALIDADO_MYPE) {
-            if (estadoActual != EstadoPostulacion.PRESELECCIONADO) {
-                throw new BusinessException("Solo se puede validar una postulación que esté PRESELECCIONADA");
+            System.out.println("=== DEBUG VALIDACION MYPE ===");
+            System.out.println("Postulacion ID: " + postulacion.getId());
+            System.out.println("Estudiante ID: " + postulacion.getEstudiante().getId());
+            long activos = contarProyectosActivosDelEstudiante(postulacion.getEstudiante().getId());
+            int limite = postulacion.getEstudiante().getLimiteProyectos();
+            System.out.println("Activos contados: " + activos);
+            System.out.println("Límite del estudiante: " + limite);
+            if (activos >= limite) {
+                System.out.println("VALIDACION FALLIDA: se lanzará 409");
+                throw new BusinessException(
+                        "Este estudiante ya alcanzó su límite de proyectos activos. " +
+                                "No puedes validarlo hasta que termine alguno de los actuales.",
+                        HttpStatus.CONFLICT
+                );
+            }
+            else {
+                System.out.println("VALIDACION OK: activos < limite, se permite validar");
             }
             postulacion.setEstado(EstadoPostulacion.VALIDADO_MYPE);
             postulacion.setFechaLimiteConfirmacion(LocalDateTime.now().plusHours(HORAS_PLAZO));
@@ -533,6 +576,35 @@ public class ProyectoService {
             postulacion.setFechaLimiteConfirmacion(null);
             postulacion.setFechaRespuesta(LocalDateTime.now());
             postulacionRepository.save(postulacion);
+            // Autocancelar otras postulaciones del estudiante en estado VALIDADO_MYPE
+            // (excluyendo el proyecto actual)
+            long activosTrasConfirmar = contarProyectosActivosDelEstudiante(estudiante.getId());
+            int limite = estudiante.getLimiteProyectos();
+            if (activosTrasConfirmar >= limite) {
+                List<Postulacion> otrasValidadas = postulacionRepository
+                        .findByEstudianteIdAndEstadoInExcluyendoProyecto(
+                                estudiante.getId(),
+                                List.of(EstadoPostulacion.VALIDADO_MYPE),
+                                proyecto.getId()
+                        );
+                for (Postulacion otra : otrasValidadas) {
+                    otra.setEstado(EstadoPostulacion.RECHAZADO);
+                    otra.setFechaLimiteConfirmacion(null);
+                    otra.setFechaRespuesta(LocalDateTime.now());
+                    postulacionRepository.save(otra);
+
+                    // Notificar a la otra MYPE
+                    notificacionService.crearNotificacion(
+                            otra.getProyecto().getMype().getUsuario(),
+                            "El estudiante eligió otro proyecto",
+                            estudiante.getUsuario().getNombre() + " confirmó participación en otro proyecto. " +
+                                    "Por favor selecciona otro postulante para \"" +
+                                    otra.getProyecto().getTitulo() + "\".",
+                            TipoNotificacion.POSTULACION,
+                            "/dashboard/postulaciones/" + otra.getProyecto().getId()
+                    );
+                }
+            }
 
             long confirmadosActualizados = postulacionRepository.findByProyectoId(proyecto.getId())
                     .stream()
@@ -541,6 +613,7 @@ public class ProyectoService {
 
             if (confirmadosActualizados >= proyecto.getCupos()) {
                 WorkflowEstado estadoAnterior = proyecto.getEstado();
+                proyecto.setFechaInicioReal(LocalDateTime.now());
                 proyecto.setEstado(WorkflowEstado.EN_DESARROLLO);
                 proyectoRepository.save(proyecto);
 
@@ -881,23 +954,66 @@ public class ProyectoService {
     // ══════════════════════════════════════════════════════════════
 
     private ProyectoResponse toResponse(Proyecto p) {
+        LocalDate fechaLimiteCalculada = null;
+        if (p.getFechaInicioReal() != null && p.getDiasEstimados() != null) {
+            fechaLimiteCalculada = p.getFechaInicioReal()
+                    .plusDays(p.getDiasEstimados())
+                    .toLocalDate();
+        }
+
+        long cuposOcupados = postulacionRepository.countByProyectoIdAndEstado(
+                p.getId(), EstadoPostulacion.CONFIRMADO
+        );
+
         return new ProyectoResponse(
                 p.getId(), p.getTitulo(), p.getDescripcion(), p.getObjetivo(),
                 p.getRequisitos(), p.getEntregablesSugeridos(), p.getAreaSistemas(),
                 p.getEstado(), p.getCupos(), p.getFechaInicio(), p.getFechaLimite(),
                 p.getFechaCreacion(),
                 p.getMype() != null ? p.getMype().getNombreComercial() : null,
-                p.getMype() != null ? p.getMype().getId() : null
+                p.getMype() != null ? p.getMype().getId() : null,
+                p.getDiasEstimados(),
+                p.getFechaInicioReal(),
+                fechaLimiteCalculada,
+                cuposOcupados
         );
     }
 
     private PostulacionResponse toPostulacionResponse(Postulacion p) {
+        long activos = contarProyectosActivosDelEstudiante(p.getEstudiante().getId());
+        int limite = p.getEstudiante().getLimiteProyectos();
+        boolean ocupado = activos >= limite;
+
+        System.out.println("=== DEPURACION POSTULACION ===");
+        System.out.println("Postulacion ID: " + p.getId());
+        System.out.println("Estudiante ID: " + p.getEstudiante().getId());
+        System.out.println("Proyectos activos: " + activos);
+        System.out.println("Límite del estudiante: " + limite);
+        System.out.println("¿Está ocupado?: " + ocupado);
+
         return new PostulacionResponse(
                 p.getId(), p.getProyecto().getId(), p.getProyecto().getTitulo(),
                 p.getEstudiante().getId(), p.getEstudiante().getUsuario().getNombre(),
                 p.getEstado(), p.getMensajePostulacion(), p.getFechaPostulacion(),
                 p.getEstudiante().getCvUrl(),
-                p.getFechaLimiteConfirmacion()
+                p.getFechaLimiteConfirmacion(),
+                ocupado
         );
+    }
+
+    private long contarProyectosActivosDelEstudiante(Long estudianteId) {
+        List<WorkflowEstado> proyectoEstadosActivos = List.of(
+                WorkflowEstado.PENDIENTE,
+                WorkflowEstado.EN_DESARROLLO,
+                WorkflowEstado.EN_REVISION
+        );
+        long count = postulacionRepository.countByEstudianteIdAndEstadoAndProyectoEstadoIn(
+                estudianteId,
+                EstadoPostulacion.CONFIRMADO,
+                proyectoEstadosActivos
+        );
+        System.out.println("contarProyectosActivosDelEstudiante(" + estudianteId + ") = " + count);
+        return count;
+
     }
 }

@@ -48,15 +48,15 @@ public class Estudiante {
     @Column(name = "cv_url", length = 500)
     private String cvUrl;
 
-    @Column(name = "limite_proyectos", nullable = false, columnDefinition = "integer default 2")
+    @Column(name = "limite_proyectos", nullable = false, columnDefinition = "integer default 1")
     @Builder.Default
-    private Integer limiteProyectos = 2;
+    private Integer limiteProyectos = 1;
 
     @Column(nullable = false)
     private Boolean activo;
 
     public Integer getLimiteProyectos() {
-        return (limiteProyectos != null && limiteProyectos > 0) ? limiteProyectos : 2;
+        return (limiteProyectos != null && limiteProyectos > 0) ? limiteProyectos : 1;
     }
 
     @Column(name = "fecha_registro", nullable = false, updatable = false)

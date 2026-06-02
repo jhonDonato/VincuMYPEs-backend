@@ -36,4 +36,6 @@ public class EditarProyectoRequest {
     private LocalDate fechaInicio;
 
     private LocalDate fechaLimite;
+
+    private Integer diasEstimados;
 }

@@ -96,5 +96,11 @@ public class Proyecto {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tipo_proyecto_id")
     private TipoProyecto tipoProyecto;
+
+    @Column(name = "dias_estimados")
+    private Integer diasEstimados;
+
+    @Column(name = "fecha_inicio_real")
+    private LocalDateTime fechaInicioReal;
 }
 

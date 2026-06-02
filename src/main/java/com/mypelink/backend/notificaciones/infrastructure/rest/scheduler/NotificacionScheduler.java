@@ -4,10 +4,8 @@ import com.mypelink.backend.ejecucion.domain.model.Entregable;
 import com.mypelink.backend.ejecucion.domain.repository.EntregableRepository;
 import com.mypelink.backend.notificaciones.application.service.NotificacionService;
 import com.mypelink.backend.proyectos.domain.model.Proyecto;
-import com.mypelink.backend.proyectos.domain.model.Postulacion;
 import com.mypelink.backend.proyectos.domain.repository.ProyectoRepository;
 import com.mypelink.backend.proyectos.domain.repository.PostulacionRepository;
-import com.mypelink.backend.shared.domain.enums.EstadoPostulacion;
 import com.mypelink.backend.shared.domain.enums.TipoNotificacion;
 import com.mypelink.backend.shared.domain.enums.WorkflowEstado;
 import com.mypelink.backend.usuarios.domain.model.Estudiante;
@@ -35,7 +33,7 @@ public class NotificacionScheduler {
 
     // ✅ Cada hora: Notificar nuevos proyectos publicados
     @Scheduled(fixedRate = 3600000)
-    @Transactional(readOnly = true)
+    @Transactional   // <-- Se quitó readOnly = true
     public void notificarNuevosProyectos() {
         List<Proyecto> proyectosRecientes = proyectoRepository
                 .findByEstadoAndActivoTrue(WorkflowEstado.PENDIENTE);
@@ -62,7 +60,7 @@ public class NotificacionScheduler {
 
     // ✅ Cada 6 horas: Alertar entregables próximos a vencer (3 días antes)
     @Scheduled(fixedRate = 21600000)
-    @Transactional(readOnly = true)
+    @Transactional   // <-- Se quitó readOnly = true
     public void alertarFechasLimiteEntregables() {
         List<Entregable> entregablesPendientes = entregableRepository.findAll();
         LocalDate enTresDias = LocalDate.now().plusDays(3);

@@ -1,7 +1,6 @@
 package com.mypelink.backend.proyectos.application.dto;
 
 import com.mypelink.backend.shared.domain.enums.EstadoPostulacion;
-
 import java.time.LocalDateTime;
 
 public record PostulacionResponse(
@@ -14,5 +13,6 @@ public record PostulacionResponse(
         String mensajePostulacion,
         LocalDateTime fechaPostulacion,
         String estudianteCvUrl,
-        LocalDateTime fechaLimiteConfirmacion
+        LocalDateTime fechaLimiteConfirmacion,
+        boolean estudianteOcupado
 ) {}

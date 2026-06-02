@@ -20,5 +20,9 @@ public record ProyectoResponse(
         LocalDate fechaLimite,
         LocalDateTime fechaCreacion,
         String mypeNombre,
-        Long mypeId
+        Long mypeId,
+        Integer diasEstimados,
+        LocalDateTime fechaInicioReal,
+        LocalDate fechaLimiteCalculada,
+        Long cuposOcupados
 ) {}

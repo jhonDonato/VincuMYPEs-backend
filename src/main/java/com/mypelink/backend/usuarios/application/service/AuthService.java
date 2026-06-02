@@ -65,9 +65,8 @@ public class AuthService {
             throw new BusinessException("Este código de estudiante ya ha sido utilizado.");
         }
 
-        Role role = roleRepository.findByNombre("ESTUDIANTE")
-                .orElseGet(() -> roleRepository.save(
-                        Role.builder().nombre("ESTUDIANTE").descripcion("Estudiante universitario").build()));
+        Role role = roleRepository.findByNombre("ROLE_ESTUDIANTE")
+                .orElseThrow(() -> new BusinessException("Rol ROLE_ESTUDIANTE no encontrado. Contacte al administrador."));
 
         Usuario usuario = usuarioRepository.save(Usuario.builder()
                 .nombre(request.nombre())
@@ -97,9 +96,8 @@ public class AuthService {
             throw new BusinessException("Este RUC ya se encuentra registrado.");
         }
 
-        Role role = roleRepository.findByNombre("MYPE")
-                .orElseGet(() -> roleRepository.save(
-                        Role.builder().nombre("MYPE").descripcion("Microempresa").build()));
+        Role role = roleRepository.findByNombre("ROLE_MYPE")
+                .orElseThrow(() -> new BusinessException("Rol ROLE_MYPE no encontrado. Contacte al administrador."));
 
         Usuario usuario = usuarioRepository.save(Usuario.builder()
                 .nombre(request.nombre())
@@ -130,13 +128,14 @@ public class AuthService {
     }
 
     private AuthResponse buildAuthResponse(Usuario usuario, String rolNombre) {
+        String rolParaFrontend = rolNombre.startsWith("ROLE_") ? rolNombre.substring(5) : rolNombre;
         var userDetails = new User(
                 usuario.getEmail(),
                 usuario.getPassword(),
-                List.of(new SimpleGrantedAuthority("ROLE_" + rolNombre))
+                List.of(new SimpleGrantedAuthority(rolNombre))
         );
-        String token = jwtService.generateToken(userDetails, Map.of("rol", rolNombre));
-        return new AuthResponse(token, "Bearer", usuario.getId(), usuario.getNombre(), usuario.getEmail(), rolNombre);
+        String token = jwtService.generateToken(userDetails, Map.of("rol", rolParaFrontend));
+        return new AuthResponse(token, "Bearer", usuario.getId(), usuario.getNombre(), usuario.getEmail(), rolParaFrontend);
     }
 
     @Transactional

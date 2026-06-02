@@ -18,5 +18,6 @@ public record CrearProyectoRequest(
         LocalDate fechaInicio,
         LocalDate fechaLimite,
         Long tipoProyectoId,
-        Long resultadoId
+        Long resultadoId,
+        Integer diasEstimados
 ) {}

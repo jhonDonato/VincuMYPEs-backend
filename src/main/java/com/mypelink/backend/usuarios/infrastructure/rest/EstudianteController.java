@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import com.mypelink.backend.usuarios.application.dto.EstudiantePublicoResponse;
 
 @RestController
 @RequestMapping("/api/estudiantes")
@@ -45,6 +46,16 @@ public class EstudianteController {
             @RequestParam("archivo") MultipartFile archivo,
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(estudianteService.subirCv(userDetails.getUsername(), archivo));
+    }
+
+    @GetMapping("/{id}/public-profile")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<EstudiantePublicoResponse> obtenerPerfilPublico(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(
+                estudianteService.obtenerPerfilPublico(id, userDetails.getUsername())
+        );
     }
 
     @GetMapping("/me/postulaciones")
