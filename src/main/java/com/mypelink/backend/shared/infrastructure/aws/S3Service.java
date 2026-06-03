@@ -159,6 +159,19 @@ public class S3Service {
             throw new BusinessException("Error de conexión con AWS S3: " + e.getMessage());
         }
     }
+    public String subirCertificado(byte[] content, String key) {
+        try {
+            PutObjectRequest putOb = PutObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(key)
+                    .contentType("application/pdf")
+                    .build();
+            s3Client.putObject(putOb, RequestBody.fromBytes(content));
+            return "https://" + bucketName + ".s3." + region + ".amazonaws.com/" + key;
+        } catch (Exception e) {
+            throw new BusinessException("Error al subir certificado a S3: " + e.getMessage());
+        }
+    }
 
     public String subirImagenPerfil(MultipartFile file) {
         if (file.isEmpty()) {

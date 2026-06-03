@@ -2,7 +2,7 @@ package com.mypelink.backend.certificaciones.application.dto;
 
 import java.time.LocalDate;
 
-public record CertificadoResponse(
+public record CertificadoAdminResponse(
         Long id,
         String codigo,
         String tituloCertificado,

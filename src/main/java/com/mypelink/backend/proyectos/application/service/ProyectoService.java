@@ -1,8 +1,11 @@
 package com.mypelink.backend.proyectos.application.service;
 
+import com.mypelink.backend.ejecucion.domain.model.Entregable;
+import com.mypelink.backend.ejecucion.domain.repository.EntregableRepository;
 import com.mypelink.backend.notificaciones.application.service.NotificacionService;
 import com.mypelink.backend.proyectos.domain.model.*;
 import com.mypelink.backend.proyectos.domain.repository.*;
+import com.mypelink.backend.shared.domain.enums.EstadoEntregable;
 import com.mypelink.backend.shared.domain.enums.TipoNotificacion;
 import com.mypelink.backend.proyectos.application.dto.*;
 import com.mypelink.backend.shared.domain.enums.EstadoPostulacion;
@@ -22,6 +25,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.mypelink.backend.shared.domain.enums.EstadoEntregable;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -30,6 +34,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 import com.mypelink.backend.proyectos.domain.model.TipoProyecto;
 import com.mypelink.backend.proyectos.domain.model.EntregableTipo;
+import com.mypelink.backend.ejecucion.domain.model.Entregable;
+import com.mypelink.backend.shared.domain.enums.EstadoEntregable;
 
 import com.mypelink.backend.usuarios.domain.model.Estudiante;
 import org.springframework.web.multipart.MultipartFile;
@@ -45,6 +51,7 @@ public class ProyectoService {
     private final MypeRepository mypeRepository;
     private final EstudianteRepository estudianteRepository;
     private final UsuarioRepository usuarioRepository;
+    private final EntregableRepository entregableRepository;
     private final NotificacionService notificacionService;
     private final WorkflowHistorialRepository workflowHistorialRepository;
     private final TipoProyectoRepository tipoProyectoRepository;
@@ -721,20 +728,30 @@ public class ProyectoService {
             throw new BusinessException("Solo puedes completar proyectos que están en desarrollo");
         }
 
+        // ✅ Validar que todos los entregables del proyecto estén APROBADOS
+        List<Entregable> entregables = entregableRepository.findByProyectoIdWithDetails(proyectoId);
+        if (entregables.isEmpty()) {
+            throw new BusinessException("El proyecto no tiene entregables registrados");
+        }
+        // Suponiendo que tienes un enum EstadoEntregable.APROBADO (ajusta el nombre si es diferente)
+        boolean todosAprobados = entregables.stream()
+                .allMatch(e -> e.getEstado() == EstadoEntregable.APROBADO);
+        if (!todosAprobados) {
+            throw new BusinessException("No se puede completar el proyecto porque aún hay entregables pendientes o rechazados");
+        }
+
         proyecto.setEstado(WorkflowEstado.COMPLETADO);
         var guardado = proyectoRepository.save(proyecto);
 
-        // Notificar a los estudiantes confirmados
-        postulacionRepository.findByProyectoIdAndEstadoWithDetails(
-                proyectoId, EstadoPostulacion.CONFIRMADO
-        ).forEach(p -> notificacionService.crearNotificacion(
-                p.getEstudiante().getUsuario(),
-                "🎉 Proyecto completado",
-                "El proyecto \"" + proyecto.getTitulo() + "\" ha sido marcado como completado.",
-                TipoNotificacion.PROYECTO,
-                "/certificados"
-        ));
-
+        // Notificar a estudiantes confirmados (opcional)
+        postulacionRepository.findByProyectoIdAndEstadoWithDetails(proyectoId, EstadoPostulacion.CONFIRMADO)
+                .forEach(p -> notificacionService.crearNotificacion(
+                        p.getEstudiante().getUsuario(),
+                        "Proyecto completado",
+                        "El proyecto \"" + proyecto.getTitulo() + "\" ha sido marcado como completado.",
+                        TipoNotificacion.PROYECTO,
+                        "/certificados"
+                ));
         return toResponse(guardado);
     }
 

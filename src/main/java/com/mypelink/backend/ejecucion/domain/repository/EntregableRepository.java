@@ -29,4 +29,7 @@ public interface EntregableRepository extends JpaRepository<Entregable, Long> {
     );
     // Para el scheduler
     List<Entregable> findAll();
+    // Buscar todos los entregables de un proyecto (sin detalles de estudiante, solo para contar)
+    @Query("SELECT e FROM Entregable e WHERE e.proyecto.id = :proyectoId")
+    List<Entregable> findByProyectoId(@Param("proyectoId") Long proyectoId);
 }

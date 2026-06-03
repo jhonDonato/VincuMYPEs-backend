@@ -1,5 +1,6 @@
 package com.mypelink.backend.certificaciones.infrastructure.rest;
 
+import com.mypelink.backend.certificaciones.application.dto.CertificadoAdminResponse;
 import com.mypelink.backend.certificaciones.application.dto.CertificadoResponse;
 import com.mypelink.backend.certificaciones.application.dto.EmitirCertificadoRequest;
 import com.mypelink.backend.certificaciones.application.service.CertificadoService;
@@ -23,11 +24,18 @@ public class CertificadoController {
 
     @PostMapping
     @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
-    public ResponseEntity<CertificadoResponse> emitir(
+    public ResponseEntity<List<CertificadoResponse>> emitir(
             @Valid @RequestBody EmitirCertificadoRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(certificadoService.emitirCertificado(userDetails.getUsername(), request));
+                .body(certificadoService.emitirCertificados(userDetails.getUsername(), request));
+    }
+
+    @GetMapping("/admin/todos")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<List<CertificadoAdminResponse>> listarTodos(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(certificadoService.listarTodosCertificados());
     }
 
     @GetMapping("/mis-certificados")
@@ -36,6 +44,8 @@ public class CertificadoController {
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(certificadoService.listarMisCertificados(userDetails.getUsername()));
     }
+
+
 
     @GetMapping("/emitidos")
     @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
