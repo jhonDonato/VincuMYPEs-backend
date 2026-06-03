@@ -9,5 +9,6 @@ public record EmitirCertificadoRequest(
         @NotNull @Size(min = 1) List<Long> estudiantesIds,
         @NotBlank String tituloCertificado,
         String descripcionCertificado,
-        String firmaBase64
+        String firmaBase64,
+        String gerenteNombre
 ) {}

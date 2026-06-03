@@ -3,7 +3,6 @@ package com.mypelink.backend.certificaciones.application.service;
 import com.mypelink.backend.certificaciones.application.dto.*;
 import com.mypelink.backend.certificaciones.domain.model.Certificado;
 import com.mypelink.backend.certificaciones.domain.repository.CertificadoRepository;
-import com.mypelink.backend.certificaciones.application.service.PdfGeneratorService;
 import com.mypelink.backend.proyectos.domain.model.Proyecto;
 import com.mypelink.backend.proyectos.domain.model.Postulacion;
 import com.mypelink.backend.proyectos.domain.repository.PostulacionRepository;
@@ -17,6 +16,7 @@ import com.mypelink.backend.usuarios.domain.model.Usuario;
 import com.mypelink.backend.usuarios.domain.repository.UsuarioRepository;
 import com.mypelink.backend.auth.recovery.application.service.EmailService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CertificadoService {
@@ -56,17 +57,20 @@ public class CertificadoService {
         }
 
         List<CertificadoResponse> responses = new ArrayList<>();
+        List<String> omitidos = new ArrayList<>();
         for (Long estudianteId : request.estudiantesIds()) {
             // Verificar que el estudiante tenga postulación CONFIRMADA
             Postulacion postulacion = postulacionRepository.findByProyectoIdAndEstudianteId(request.proyectoId(), estudianteId)
                     .orElseThrow(() -> new ResourceNotFoundException("El estudiante no tiene una postulación en este proyecto"));
+
             if (postulacion.getEstado() != EstadoPostulacion.CONFIRMADO) {
                 throw new BusinessException("El estudiante no ha confirmado su participación en el proyecto");
             }
 
             // Evitar duplicados
             if (certificadoRepository.existsByProyectoIdAndEstudianteId(request.proyectoId(), estudianteId)) {
-                throw new BusinessException("Ya existe un certificado para este estudiante en este proyecto");
+                omitidos.add(estudianteId.toString());
+                continue;
             }
 
             String codigo = "CERT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
@@ -82,11 +86,10 @@ public class CertificadoService {
 
             Certificado guardado = certificadoRepository.save(certificado);
 
-            System.out.println("=== DEPURACIÓN EMISIÓN ===");
-            System.out.println("Estudiante ID: " + postulacion.getEstudiante().getId());
-            System.out.println("Proyecto ID: " + proyecto.getId());
-            System.out.println("Título certificado: " + request.tituloCertificado());
-            System.out.println("Descripción: " + request.descripcionCertificado());
+            log.debug("[Certificado] Emitido - estudianteId={}, proyectoId={}, titulo={}",
+                    postulacion.getEstudiante().getId(),
+                    proyecto.getId(),
+                    request.tituloCertificado());
 
             // Recargar certificado con relaciones
             Certificado full = certificadoRepository.findById(guardado.getId())
@@ -94,7 +97,7 @@ public class CertificadoService {
             full.getEstudiante().getUsuario().getNombre(); // forzar carga
 
             // Generar PDF y subir a S3 (con firma)
-            byte[] pdfBytes = pdfGeneratorService.generarCertificadoPDF(full, proyecto, proyecto.getMype(), request.firmaBase64());
+            byte[] pdfBytes = pdfGeneratorService.generarCertificadoPDF(full, proyecto, proyecto.getMype(), request.firmaBase64(), request.gerenteNombre());
             String pdfUrl = s3Service.subirCertificado(pdfBytes, "certificados/" + codigo + ".pdf");
             full.setUrlCertificado(pdfUrl);
             certificadoRepository.save(full);

@@ -7,10 +7,10 @@ public record CertificadoResponse(
         String codigo,
         String tituloCertificado,
         String descripcionCertificado,
-        String nombreEstudiante,
+        String estudianteNombre,
         String emailEstudiante,
-        String nombreProyecto,
-        String nombreMype,
+        String proyectoTitulo,
+        String mypeNombre,
         String urlCertificado,
         LocalDate fechaEmision
 ) {}
