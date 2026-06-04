@@ -12,5 +12,6 @@ public record CertificadoResponse(
         String proyectoTitulo,
         String mypeNombre,
         String urlCertificado,
-        LocalDate fechaEmision
+        LocalDate fechaEmision,
+        Boolean enviadoEmail
 ) {}

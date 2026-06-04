@@ -10,5 +10,6 @@ public record ActualizarMypeRequest(
         String whatsapp,
         String direccion,
         String telefono,
-        String emailContacto
+        String emailContacto,
+        String nombreRepresentante
 ) {}

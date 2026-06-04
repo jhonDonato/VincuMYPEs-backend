@@ -21,7 +21,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -57,9 +56,8 @@ public class CertificadoService {
         }
 
         List<CertificadoResponse> responses = new ArrayList<>();
-        List<String> omitidos = new ArrayList<>();
+
         for (Long estudianteId : request.estudiantesIds()) {
-            // Verificar que el estudiante tenga postulación CONFIRMADA
             Postulacion postulacion = postulacionRepository.findByProyectoIdAndEstudianteId(request.proyectoId(), estudianteId)
                     .orElseThrow(() -> new ResourceNotFoundException("El estudiante no tiene una postulación en este proyecto"));
 
@@ -67,9 +65,8 @@ public class CertificadoService {
                 throw new BusinessException("El estudiante no ha confirmado su participación en el proyecto");
             }
 
-            // Evitar duplicados
             if (certificadoRepository.existsByProyectoIdAndEstudianteId(request.proyectoId(), estudianteId)) {
-                omitidos.add(estudianteId.toString());
+                log.warn("El estudiante {} ya tiene un certificado para este proyecto", estudianteId);
                 continue;
             }
 
@@ -82,6 +79,7 @@ public class CertificadoService {
                     .tituloCertificado(request.tituloCertificado())
                     .descripcionCertificado(request.descripcionCertificado())
                     .emitidoPor(usuarioMype)
+                    .enviadoEmail(false)
                     .build();
 
             Certificado guardado = certificadoRepository.save(certificado);
@@ -91,29 +89,22 @@ public class CertificadoService {
                     proyecto.getId(),
                     request.tituloCertificado());
 
-            // Recargar certificado con relaciones
+            // Recargar con relaciones
             Certificado full = certificadoRepository.findById(guardado.getId())
                     .orElseThrow(() -> new RuntimeException("Certificado no encontrado después de guardar"));
-            full.getEstudiante().getUsuario().getNombre(); // forzar carga
 
-            // Generar PDF y subir a S3 (con firma)
-            byte[] pdfBytes = pdfGeneratorService.generarCertificadoPDF(full, proyecto, proyecto.getMype(), request.firmaBase64(), request.gerenteNombre());
+            // Generar PDF y subir a S3
+            byte[] pdfBytes = pdfGeneratorService.generarCertificadoPDF(
+                    full, proyecto, proyecto.getMype(),
+                    request.firmaBase64(), request.gerenteNombre());
+
             String pdfUrl = s3Service.subirCertificado(pdfBytes, "certificados/" + codigo + ".pdf");
             full.setUrlCertificado(pdfUrl);
             certificadoRepository.save(full);
 
-            // Enviar email
-            emailService.enviarCertificado(
-                    postulacion.getEstudiante().getUsuario().getEmail(),
-                    postulacion.getEstudiante().getUsuario().getNombre(),
-                    request.tituloCertificado(),
-                    proyecto.getMype().getNombreComercial(),
-                    codigo,
-                    pdfUrl
-            );
-
             responses.add(mapToResponse(full));
         }
+
         return responses;
     }
 
@@ -150,10 +141,21 @@ public class CertificadoService {
     @Transactional
     public void enviarCertificado(Long certificadoId, String emailMype) {
         Certificado certificado = certificadoRepository.findById(certificadoId)
-                .orElseThrow(() -> new ResourceNotFoundException("Certificado", certificadoId));
+                .orElseThrow(() -> new ResourceNotFoundException("Certificado no encontrado", certificadoId));
+
         if (!certificado.getEmitidoPor().getEmail().equals(emailMype)) {
             throw new BusinessException("No tienes permiso para enviar este certificado", HttpStatus.FORBIDDEN);
         }
+
+        if (certificado.getEnviadoEmail() != null && certificado.getEnviadoEmail()) {
+            throw new BusinessException("Este certificado ya ha sido enviado al estudiante");
+        }
+
+        // Marcar como enviado ANTES de enviar el email
+        certificado.setEnviadoEmail(true);
+        certificadoRepository.save(certificado);
+
+        // Enviar email
         emailService.enviarCertificado(
                 certificado.getEstudiante().getUsuario().getEmail(),
                 certificado.getEstudiante().getUsuario().getNombre(),
@@ -162,6 +164,43 @@ public class CertificadoService {
                 certificado.getCodigo(),
                 certificado.getUrlCertificado()
         );
+
+        log.info("[Certificado] Enviado por email - id={}, estudiante={}",
+                certificadoId, certificado.getEstudiante().getUsuario().getEmail());
+    }
+
+    // ✅ Eliminar certificado (solo si no ha sido enviado)
+    @Transactional
+    public void eliminarCertificado(Long certificadoId, String emailMype) {
+        Certificado certificado = certificadoRepository.findById(certificadoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Certificado no encontrado", certificadoId));
+
+        // Verificar que la MYPE sea la propietaria
+        if (!certificado.getEmitidoPor().getEmail().equals(emailMype)) {
+            throw new BusinessException("No tienes permiso para eliminar este certificado", HttpStatus.FORBIDDEN);
+        }
+
+        // Verificar que no haya sido enviado al estudiante
+        if (certificado.getEnviadoEmail() != null && certificado.getEnviadoEmail()) {
+            throw new BusinessException("No se puede eliminar un certificado que ya ha sido enviado al estudiante");
+        }
+
+        // Eliminar el archivo PDF de S3 si existe
+        if (certificado.getUrlCertificado() != null && !certificado.getUrlCertificado().isBlank()) {
+            try {
+                // Usar el método de S3Service que ya maneja la extracción de la key
+                s3Service.eliminarArchivo(certificado.getUrlCertificado());
+                log.info("[Certificado] PDF eliminado de S3: {}", certificado.getUrlCertificado());
+            } catch (Exception e) {
+                log.warn("[Certificado] Error eliminando PDF de S3: {}", e.getMessage());
+                // No lanzamos excepción para poder eliminar el registro de BD
+            }
+        }
+
+        // Eliminar el certificado de la base de datos
+        certificadoRepository.delete(certificado);
+        log.info("[Certificado] Eliminado - id={}, codigo={}, estudiante={}",
+                certificadoId, certificado.getCodigo(), certificado.getEstudiante().getUsuario().getNombre());
     }
 
     private CertificadoResponse mapToResponse(Certificado c) {
@@ -175,7 +214,8 @@ public class CertificadoService {
                 c.getProyecto().getTitulo(),
                 c.getProyecto().getMype().getNombreComercial(),
                 c.getUrlCertificado(),
-                c.getFechaEmision()
+                c.getFechaEmision(),
+                c.getEnviadoEmail() != null && c.getEnviadoEmail()
         );
     }
 }

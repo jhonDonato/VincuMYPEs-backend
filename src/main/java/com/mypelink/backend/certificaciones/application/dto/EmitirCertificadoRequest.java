@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 public record EmitirCertificadoRequest(
         @NotNull Long proyectoId,
-        @NotNull @Size(min = 1) List<Long> estudiantesIds,
+        @NotNull @Size(min = 1) List<@NotNull Long> estudiantesIds,
         @NotBlank String tituloCertificado,
         String descripcionCertificado,
         String firmaBase64,

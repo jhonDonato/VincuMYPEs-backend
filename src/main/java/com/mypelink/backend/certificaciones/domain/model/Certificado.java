@@ -56,6 +56,9 @@ public class Certificado {
     @Column(nullable = false)
     private Boolean activo;
 
+    @Column(name = "enviado_email", nullable = false)
+    private Boolean enviadoEmail = false;
+
     @PrePersist
     protected void onCreate() {
         this.fechaEmision = LocalDate.now();

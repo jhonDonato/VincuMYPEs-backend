@@ -8,6 +8,7 @@ public record MypePerfilResponse(
 
         // ── Siempre públicos ─────────────────────────────────
         String nombreComercial,
+        String nombreRepresentante,
         String razonSocial,
         String rubro,
         String fotoPerfil,

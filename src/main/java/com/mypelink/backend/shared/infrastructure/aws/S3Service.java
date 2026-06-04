@@ -2,6 +2,7 @@ package com.mypelink.backend.shared.infrastructure.aws;
 
 import com.mypelink.backend.shared.infrastructure.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -15,11 +16,12 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class S3Service {
 
-    private final S3Client s3Client;  // ✅ Esto es SdkClient (v2)
+    private final S3Client s3Client;  // ✅ Cliente S3 v2
 
     @Value("${aws.s3.bucket}")
     private String bucketName;
@@ -27,10 +29,14 @@ public class S3Service {
     @Value("${aws.region}")
     private String region;
 
-    // ✅ MÉTODO CORREGIDO - usa s3Client (no amazonS3)
-    public void eliminarArchivo(String fileUrl) {
+    // ✅ MÉTODO CORREGIDO - Eliminar por key (nombre de archivo)
+    public void deleteFile(String key) {
         try {
-            String key = extractKeyFromUrl(fileUrl);
+            // Verificar que la key no sea null o vacía
+            if (key == null || key.isBlank()) {
+                log.warn("Intento de eliminar archivo con key nula o vacía");
+                return;
+            }
 
             DeleteObjectRequest deleteRequest = DeleteObjectRequest.builder()
                     .bucket(bucketName)
@@ -38,48 +44,75 @@ public class S3Service {
                     .build();
 
             s3Client.deleteObject(deleteRequest);
-
+            log.info("Archivo eliminado de S3: bucket={}, key={}", bucketName, key);
         } catch (Exception e) {
+            log.error("Error eliminando archivo de S3: key={}, error={}", key, e.getMessage(), e);
             throw new BusinessException("Error al eliminar archivo de S3: " + e.getMessage());
         }
     }
 
-    // ✅ MÉTODO CORREGIDO - extrae la key correctamente
+    // ✅ MÉTODO CORREGIDO - Eliminar por URL completa
+    public void eliminarArchivo(String fileUrl) {
+        try {
+            if (fileUrl == null || fileUrl.isBlank()) {
+                log.warn("Intento de eliminar archivo con URL nula o vacía");
+                return;
+            }
+
+            String key = extractKeyFromUrl(fileUrl);
+            deleteFile(key);
+        } catch (Exception e) {
+            log.error("Error eliminando archivo por URL: {}", e.getMessage(), e);
+            throw new BusinessException("Error al eliminar archivo de S3: " + e.getMessage());
+        }
+    }
+
+    // ✅ MÉTODO CORREGIDO - Extrae la key de la URL correctamente
     private String extractKeyFromUrl(String fileUrl) {
         try {
-            // La URL tiene formato: https://bucket-name.s3.region.amazonaws.com/path/to/file.pdf
-            // Necesitamos extraer todo después del bucket
+            // Decodificar la URL primero
+            String decodedUrl = URLDecoder.decode(fileUrl, StandardCharsets.UTF_8.name());
 
+            // Formato: https://bucket-name.s3.region.amazonaws.com/path/to/file.pdf
             String bucketWithDot = bucketName + ".s3.";
+            int bucketIndex = decodedUrl.indexOf(bucketWithDot);
 
-            int bucketIndex = fileUrl.indexOf(bucketWithDot);
-            if (bucketIndex == -1) {
-                // Intentar otro formato: https://s3.region.amazonaws.com/bucket-name/path
-                bucketIndex = fileUrl.indexOf(bucketName);
-                if (bucketIndex == -1) {
-                    throw new BusinessException("No se pudo extraer la key de la URL: " + fileUrl);
+            if (bucketIndex != -1) {
+                String afterBucket = decodedUrl.substring(bucketIndex + bucketWithDot.length());
+                // Saltar la región y .amazonaws.com/
+                int regionEnd = afterBucket.indexOf(".amazonaws.com/");
+                if (regionEnd != -1) {
+                    afterBucket = afterBucket.substring(regionEnd + 15);
                 }
-                String afterBucket = fileUrl.substring(bucketIndex + bucketName.length() + 1);
-                // Decodificar URL (por si tiene espacios o caracteres especiales)
-                return URLDecoder.decode(afterBucket, StandardCharsets.UTF_8.name());
+                return afterBucket;
             }
 
-            String afterBucket = fileUrl.substring(bucketIndex + bucketWithDot.length());
-            // Saltar la región y .amazonaws.com/
-            int regionEnd = afterBucket.indexOf(".amazonaws.com/");
-            if (regionEnd != -1) {
-                afterBucket = afterBucket.substring(regionEnd + 15); // len(".amazonaws.com/") = 15
+            // Formato alternativo: https://s3.region.amazonaws.com/bucket-name/path
+            String s3Url = "s3." + region + ".amazonaws.com/";
+            int s3Index = decodedUrl.indexOf(s3Url);
+            if (s3Index != -1) {
+                String afterS3 = decodedUrl.substring(s3Index + s3Url.length());
+                if (afterS3.startsWith(bucketName + "/")) {
+                    return afterS3.substring(bucketName.length() + 1);
+                }
+                return afterS3;
             }
 
-            // Decodificar URL
-            return URLDecoder.decode(afterBucket, StandardCharsets.UTF_8.name());
+            // Formato alternativo: solo la key directamente
+            if (!decodedUrl.contains("://")) {
+                return decodedUrl;
+            }
+
+            log.warn("No se pudo extraer la key de la URL: {}", fileUrl);
+            throw new BusinessException("No se pudo extraer la key de la URL: " + fileUrl);
 
         } catch (Exception e) {
+            log.error("Error extrayendo key de URL: {}", e.getMessage(), e);
             throw new BusinessException("Error al procesar la URL del archivo: " + e.getMessage());
         }
     }
 
-    // Tus métodos existentes (subirEntregablePdf, subirCvPdf, subirImagenPerfil) se quedan igual
+    // ✅ MÉTODO CORREGIDO - Subir entregable PDF
     public String subirEntregablePdf(MultipartFile file) {
         if (file.isEmpty()) {
             throw new BusinessException("El archivo adjunto está vacío.");
@@ -88,6 +121,7 @@ public class S3Service {
         if (!"application/pdf".equalsIgnoreCase(file.getContentType())) {
             throw new BusinessException("Formato no válido. Por seguridad, los entregables solo pueden ser archivos PDF.");
         }
+
         String fileName = "entregables/" + UUID.randomUUID() + "_" + file.getOriginalFilename().replace(" ", "_");
 
         try {
@@ -102,12 +136,15 @@ public class S3Service {
             return "https://" + bucketName + ".s3." + region + ".amazonaws.com/" + fileName;
 
         } catch (IOException e) {
+            log.error("Error procesando archivo PDF: {}", e.getMessage(), e);
             throw new BusinessException("Ocurrió un error al procesar el archivo PDF.");
         } catch (Exception e) {
+            log.error("Error subiendo a S3: {}", e.getMessage(), e);
             throw new BusinessException("Error de conexión con AWS S3: " + e.getMessage());
         }
     }
 
+    // ✅ MÉTODO CORREGIDO - Subir CV PDF
     public String subirCvPdf(MultipartFile file) {
         if (file.isEmpty()) {
             throw new BusinessException("El archivo CV está vacío.");
@@ -134,45 +171,67 @@ public class S3Service {
             return "https://" + bucketName + ".s3." + region + ".amazonaws.com/" + fileName;
 
         } catch (IOException e) {
+            log.error("Error procesando CV: {}", e.getMessage(), e);
             throw new BusinessException("Ocurrió un error al procesar el CV.");
         } catch (Exception e) {
+            log.error("Error subiendo CV a S3: {}", e.getMessage(), e);
             throw new BusinessException("Error al subir el CV a AWS S3: " + e.getMessage());
         }
     }
 
+    // ✅ MÉTODO CORREGIDO - Subir insumo
     public String subirInsumo(MultipartFile file) {
         if (file.isEmpty()) {
             throw new BusinessException("El archivo está vacío.");
         }
+
         String fileName = "insumos/" + UUID.randomUUID() + "_" + file.getOriginalFilename().replace(" ", "_");
+
         try {
             PutObjectRequest putOb = PutObjectRequest.builder()
                     .bucket(bucketName)
                     .key(fileName)
                     .contentType(file.getContentType())
                     .build();
+
             s3Client.putObject(putOb, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
             return "https://" + bucketName + ".s3." + region + ".amazonaws.com/" + fileName;
+
         } catch (IOException e) {
+            log.error("Error procesando insumo: {}", e.getMessage(), e);
             throw new BusinessException("Ocurrió un error al procesar el archivo.");
         } catch (Exception e) {
+            log.error("Error subiendo insumo a S3: {}", e.getMessage(), e);
             throw new BusinessException("Error de conexión con AWS S3: " + e.getMessage());
         }
     }
+
+    // ✅ MÉTODO CORREGIDO - Subir certificado
     public String subirCertificado(byte[] content, String key) {
         try {
+            if (content == null || content.length == 0) {
+                throw new BusinessException("El contenido del certificado está vacío");
+            }
+
             PutObjectRequest putOb = PutObjectRequest.builder()
                     .bucket(bucketName)
                     .key(key)
                     .contentType("application/pdf")
                     .build();
+
             s3Client.putObject(putOb, RequestBody.fromBytes(content));
-            return "https://" + bucketName + ".s3." + region + ".amazonaws.com/" + key;
+
+            String url = "https://" + bucketName + ".s3." + region + ".amazonaws.com/" + key;
+            log.info("Certificado subido a S3: {}", url);
+            return url;
+
         } catch (Exception e) {
+            log.error("Error subiendo certificado a S3: {}", e.getMessage(), e);
             throw new BusinessException("Error al subir certificado a S3: " + e.getMessage());
         }
     }
 
+    // ✅ MÉTODO CORREGIDO - Subir imagen de perfil
     public String subirImagenPerfil(MultipartFile file) {
         if (file.isEmpty()) {
             throw new BusinessException("La imagen está vacía.");
@@ -197,8 +256,10 @@ public class S3Service {
             return "https://" + bucketName + ".s3." + region + ".amazonaws.com/" + fileName;
 
         } catch (IOException e) {
+            log.error("Error procesando imagen de perfil: {}", e.getMessage(), e);
             throw new BusinessException("Ocurrió un error al procesar la imagen de perfil.");
         } catch (Exception e) {
+            log.error("Error subiendo imagen a S3: {}", e.getMessage(), e);
             throw new BusinessException("Error de conexión con AWS S3: " + e.getMessage());
         }
     }

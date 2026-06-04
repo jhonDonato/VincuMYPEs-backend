@@ -62,4 +62,13 @@ public class CertificadoController {
         certificadoService.enviarCertificado(id, userDetails.getUsername());
         return ResponseEntity.noContent().build();
     }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
+    public ResponseEntity<Void> eliminar(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        certificadoService.eliminarCertificado(id, userDetails.getUsername());
+        return ResponseEntity.noContent().build();
+    }
 }

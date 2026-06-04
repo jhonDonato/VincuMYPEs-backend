@@ -23,6 +23,9 @@ public class Mype {
     @Column(name = "nombre_comercial", nullable = false, length = 150)
     private String nombreComercial;
 
+    @Column(name = "nombre_representante", length = 150)
+    private String nombreRepresentante;
+
     @Column(unique = true, length = 20)
     private String ruc;
 

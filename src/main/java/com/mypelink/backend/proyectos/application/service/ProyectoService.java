@@ -197,12 +197,7 @@ public class ProyectoService {
                 }
             }
         }
-        // Hard block: una MYPE no puede tener dos proyectos del MISMO TipoProyecto
-        // simultáneamente en estado activo. Razones documentadas:
-        // - Evita que la MYPE evalúe dos equipos haciendo lo mismo en paralelo.
-        // - Evita que los estudiantes vean publicaciones repetidas y se desmotiven.
-        // Para conseguir más estudiantes, la vía correcta es esperar a que el primero
-        // termine, no abrir otro del mismo tipo ni editar cupos del existente.
+
         if (proyecto.getTipoProyecto() != null) {
             List<WorkflowEstado> estadosActivos = List.of(
                     WorkflowEstado.PENDIENTE,
@@ -298,21 +293,6 @@ public class ProyectoService {
         return toResponse(proyectoRepository.save(proyecto));
     }
 
-    /**
-     * Edita un proyecto. Reglas de qué se puede editar según el estado:
-     *
-     *   BORRADOR                       → todos los campos editables.
-     *   PENDIENTE                      → editable salvo `cupos`. La cantidad
-     *                                    de estudiantes ya está anunciada al
-     *                                    público, cambiarla rompe expectativas
-     *                                    de quienes ya postularon o evaluaron
-     *                                    si postular.
-     *   EN_REVISION                    → mismo bloqueo de `cupos` que PENDIENTE.
-     *   EN_DESARROLLO / COMPLETADO     → nada editable (regla previa).
-     *
-     * Si la MYPE necesita más estudiantes para algo parecido, la vía es esperar
-     * a que el proyecto termine y publicar otro nuevo; NO editar cupos.
-     */
     @Transactional
     public ProyectoResponse editar(Long proyectoId, EditarProyectoRequest request, String emailMype) {
         var usuario = usuarioRepository.findByEmailWithRole(emailMype)
@@ -920,6 +900,7 @@ public class ProyectoService {
         return new MypePerfilResponse(
                 mype.getId(),
                 mype.getNombreComercial(),
+                mype.getNombreRepresentante(),
                 mype.getRazonSocial(),
                 mype.getRubro(),
                 mype.getUsuario().getFotoPerfil(),
