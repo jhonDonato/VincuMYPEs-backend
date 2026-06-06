@@ -36,4 +36,11 @@ public interface ProyectoRepository extends JpaRepository<Proyecto, Long> {
             @Param("mypeId") Long mypeId,
             @Param("tipoProyectoId") Long tipoProyectoId,
             @Param("estados") List<WorkflowEstado> estados);
+    List<Proyecto> findByMypeIdAndEstado(Long mypeId, WorkflowEstado estado);
+
+    @Query("SELECT COUNT(p) FROM Proyecto p WHERE p.estado IN :estados AND p.activo = true")
+    long countByEstadoInAndActivoTrue(@Param("estados") List<WorkflowEstado> estados);
+
+    @Query("SELECT p.areaSistemas, COUNT(p) FROM Proyecto p GROUP BY p.areaSistemas")
+    List<Object[]> countGroupByAreaSistemas();
 }
