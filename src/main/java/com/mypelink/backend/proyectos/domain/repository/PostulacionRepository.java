@@ -4,15 +4,17 @@ import com.mypelink.backend.proyectos.domain.model.Postulacion;
 import com.mypelink.backend.shared.domain.enums.EstadoPostulacion;
 import com.mypelink.backend.shared.domain.enums.WorkflowEstado;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import com.mypelink.backend.shared.domain.enums.WorkflowEstado;
 
-public interface PostulacionRepository extends JpaRepository<Postulacion, Long> {
+public interface PostulacionRepository
+        extends JpaRepository<Postulacion, Long>,
+                JpaSpecificationExecutor<Postulacion> {
 
     boolean existsByProyectoIdAndEstudianteId(Long proyectoId, Long estudianteId);
 
@@ -118,5 +120,20 @@ public interface PostulacionRepository extends JpaRepository<Postulacion, Long> 
             "WHERE p.proyecto.id = :proyectoId AND p.estado = :estado")
     long countByProyectoIdAndEstado(
             @Param("proyectoId") Long proyectoId,
+            @Param("estado") EstadoPostulacion estado);
+
+    boolean existsByProyectoIdAndEstudianteUsuarioIdAndEstado(Long proyectoId, Long estudianteUsuarioId, EstadoPostulacion estado);
+
+    List<Postulacion> findByProyectoIdAndEstado(Long proyectoId, EstadoPostulacion estado);
+
+    List<Postulacion> findByEstudianteUsuarioIdAndEstado(Long estudianteUsuarioId, EstadoPostulacion estado);
+
+    @Query("SELECT COUNT(p) FROM Postulacion p WHERE p.estado = :estado")
+    long countByEstado(@Param("estado") EstadoPostulacion estado);
+
+    @Query("SELECT DISTINCT p.proyecto.id FROM Postulacion p " +
+           "WHERE p.proyecto.id IN :proyectoIds AND p.estado = :estado")
+    List<Long> findProyectoIdsConEstado(
+            @Param("proyectoIds") List<Long> proyectoIds,
             @Param("estado") EstadoPostulacion estado);
 }
