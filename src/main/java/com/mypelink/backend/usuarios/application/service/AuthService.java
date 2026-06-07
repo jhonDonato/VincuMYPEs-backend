@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -20,6 +21,8 @@ import org.springframework.security.core.userdetails.User;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -66,6 +69,17 @@ public class AuthService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final LoginAttemptRepository loginAttemptRepository;
 
+    private void validatePasswordStrength(String password) {
+        if (password == null || password.length() < 8 ||
+                !password.matches(".*[A-Z].*") ||
+                !password.matches(".*[a-z].*") ||
+                !password.matches(".*\\d.*") ||
+                !password.matches(".*[@$!%*?&\\-_#].*")) {
+            throw new BusinessException("La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula, un número y un símbolo (@$!%*?&\\-_#)");
+        }
+    }
+
+
     @Transactional
     public AuthResponse registerEstudiante(RegisterEstudianteRequest request) {
         if (configuracionService.isModoMantenimiento()) {
@@ -81,16 +95,32 @@ public class AuthService {
                 throw new BusinessException("El código de estudiante es obligatorio");
             }
         }
+        if (request.codigoEstudiante() != null && !request.codigoEstudiante().matches("^N00\\d{6}$")) {
+            throw new BusinessException("El código de estudiante debe tener el formato N00XXXXXX");
+        }
         if (usuarioRepository.existsByEmail(request.email())) {
             throw new BusinessException("El correo electrónico ya está registrado en otra cuenta.");
         }
-        if (request.dni() != null && usuarioRepository.existsByDni(request.dni())) {
-            throw new BusinessException("Este DNI ya se encuentra registrado.");
+        if (request.dni() == null || request.dni().isBlank()) {
+            throw new BusinessException("El DNI es obligatorio");
+        }
+        if (request.dni() != null && !request.dni().matches("\\d{8}")) {
+            throw new BusinessException("El DNI debe tener 8 dígitos");
         }
         if (request.codigoEstudiante() != null &&
                 estudianteRepository.existsByCodigoEstudiante(request.codigoEstudiante())) {
             throw new BusinessException("Este código de estudiante ya ha sido utilizado.");
         }
+        if (request.telefono() == null || !request.telefono().matches("\\d{9}")) {
+            throw new BusinessException("El teléfono debe tener 9 dígitos");
+        }
+        if (usuarioRepository.existsByTelefono(request.telefono())) {
+            throw new BusinessException("El número de teléfono ya está registrado");
+        }
+        if (request.password() == null || request.password().isBlank()) {
+            throw new BusinessException("La contraseña es obligatoria");
+        }
+        validatePasswordStrength(request.password());
 
         Role role = roleRepository.findByNombre("ROLE_ESTUDIANTE")
                 .orElseThrow(() -> new BusinessException(
@@ -117,6 +147,7 @@ public class AuthService {
         return buildAuthResponseSinRefresh(usuario, role.getNombre());
     }
 
+
     @Transactional
     public AuthResponse registerMype(RegisterMypeRequest request) {
         if (configuracionService.isModoMantenimiento()) {
@@ -124,12 +155,30 @@ public class AuthService {
                     "Sistema en mantenimiento. Solo administradores pueden ingresar.",
                     HttpStatus.SERVICE_UNAVAILABLE);
         }
+
         if (usuarioRepository.existsByEmail(request.email())) {
             throw new BusinessException("El correo electrónico ya está registrado en otra cuenta.");
         }
         if (request.ruc() != null && mypeRepository.existsByRuc(request.ruc())) {
             throw new BusinessException("Este RUC ya se encuentra registrado.");
+
         }
+        if (request.ruc() == null || request.ruc().isBlank()) {
+            throw new BusinessException("El RUC es obligatorio");
+        }
+        if (request.ruc() != null && !request.ruc().matches("^(10|20)\\d{9}$")) {
+            throw new BusinessException("El RUC debe tener 11 dígitos y empezar con 10 o 20");
+        }
+        if (request.telefono() == null || !request.telefono().matches("\\d{9}")) {
+            throw new BusinessException("El teléfono debe tener 9 dígitos");
+        }
+        if (usuarioRepository.existsByTelefono(request.telefono())) {
+            throw new BusinessException("El número de teléfono ya está registrado");
+        }
+        if (request.password() == null || request.password().isBlank()) {
+            throw new BusinessException("La contraseña es obligatoria");
+        }
+        validatePasswordStrength(request.password());
 
         Role role = roleRepository.findByNombre("ROLE_MYPE")
                 .orElseThrow(() -> new BusinessException(

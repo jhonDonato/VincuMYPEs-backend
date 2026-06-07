@@ -72,4 +72,14 @@ public class Mype {
         this.fechaRegistro = LocalDateTime.now();
         if (this.activo == null) this.activo = true;
     }
+
+    @Column(length = 100)
+    private String ciudad;
+
+    @Column(length = 100)
+    private String sector;
+
+    private Double latitud;
+
+    private Double longitud;
 }

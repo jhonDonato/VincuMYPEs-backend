@@ -1,5 +1,6 @@
 package com.mypelink.backend.ejecucion.application.service;
 
+import com.mypelink.backend.auth.recovery.application.service.EmailService;
 import com.mypelink.backend.ejecucion.application.dto.EntregableResponse;
 import com.mypelink.backend.ejecucion.application.dto.RevisarEntregableRequest;
 import com.mypelink.backend.ejecucion.domain.model.Entregable;
@@ -48,6 +49,7 @@ public class EntregableService {
     private final NotificacionService notificacionService;
     private final S3Service s3Service;
     private final ProyectoService proyectoService;
+    private final EmailService emailService;
 
     @Transactional
     public EntregableResponse subir(Long proyectoId, String titulo, String descripcion, MultipartFile archivo,
@@ -89,7 +91,20 @@ public class EntregableService {
                 .archivo(archivoUrl)
                 .subidoPor(usuario)  // ← AGREGADO
                 .build());
-
+        try {
+            String mypeEmail = proyecto.getMype().getUsuario().getEmail();
+            String mypeNombre = proyecto.getMype().getUsuario().getNombre();
+            String emailTitulo = "Nuevo entregable subido en tu proyecto";
+            String mensaje = String.format(
+                    "El estudiante %s (delegado) ha subido el entregable \"%s\" para el proyecto \"%s\". Revisa el entregable en la sección de evaluación.",
+                    estudiante.getUsuario().getNombre(),
+                    titulo,
+                    proyecto.getTitulo()
+            );
+            emailService.enviarCorreoNotificacion(mypeEmail, emailTitulo, mensaje, mypeNombre);
+        } catch (Exception e) {
+            log.error("Error al enviar email a MYPE por nuevo entregable: {}", e.getMessage());
+        }
         notificacionService.crearNotificacion(
                 proyecto.getMype().getUsuario(),
                 "Nuevo entregable recibido",

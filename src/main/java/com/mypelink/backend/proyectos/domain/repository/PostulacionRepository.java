@@ -118,12 +118,20 @@ public interface PostulacionRepository
 
     @Query("SELECT COUNT(p) FROM Postulacion p " +
             "WHERE p.proyecto.id = :proyectoId AND p.estado = :estado")
+
+
     long countByProyectoIdAndEstado(
             @Param("proyectoId") Long proyectoId,
             @Param("estado") EstadoPostulacion estado);
 
     boolean existsByProyectoIdAndEstudianteUsuarioIdAndEstado(Long proyectoId, Long estudianteUsuarioId, EstadoPostulacion estado);
-
+    @Query("SELECT COUNT(p) > 0 FROM Postulacion p " +
+            "WHERE p.proyecto.id = :proyectoId " +
+            "AND p.estudiante.id = :estudianteId " +
+            "AND p.estado IN :estadosActivos")
+    boolean existsPostulacionActiva(@Param("proyectoId") Long proyectoId,
+                                    @Param("estudianteId") Long estudianteId,
+                                    @Param("estadosActivos") List<EstadoPostulacion> estadosActivos);
     List<Postulacion> findByProyectoIdAndEstado(Long proyectoId, EstadoPostulacion estado);
 
     List<Postulacion> findByEstudianteUsuarioIdAndEstado(Long estudianteUsuarioId, EstadoPostulacion estado);

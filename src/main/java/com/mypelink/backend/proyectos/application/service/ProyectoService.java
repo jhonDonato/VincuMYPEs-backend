@@ -1,5 +1,6 @@
 package com.mypelink.backend.proyectos.application.service;
 
+import com.mypelink.backend.auth.recovery.application.service.EmailService;
 import com.mypelink.backend.ejecucion.domain.model.Entregable;
 import com.mypelink.backend.ejecucion.domain.repository.EntregableRepository;
 import com.mypelink.backend.notificaciones.application.service.NotificacionService;
@@ -14,12 +15,15 @@ import com.mypelink.backend.shared.infrastructure.aws.S3Service;
 import com.mypelink.backend.shared.infrastructure.exception.BusinessException;
 import com.mypelink.backend.shared.infrastructure.exception.ResourceNotFoundException;
 import com.mypelink.backend.usuarios.application.dto.ActualizarMypeRequest;
+import com.mypelink.backend.usuarios.application.dto.MypePerfilPublicoResponse;
 import com.mypelink.backend.usuarios.application.dto.MypePerfilResponse;
+import com.mypelink.backend.usuarios.domain.model.Mype;
 import com.mypelink.backend.usuarios.domain.repository.EstudianteRepository;
 import com.mypelink.backend.usuarios.domain.repository.MypeRepository;
 import com.mypelink.backend.usuarios.domain.repository.UsuarioRepository;
 import com.mypelink.backend.usuarios.domain.model.Usuario;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -65,6 +69,10 @@ public class ProyectoService {
     private final S3Service s3Service;
     private final VotacionService votacionService;
     private final ChatGrupalService chatGrupalService;
+    private final EmailService emailService;
+    @Value("${admin.notification.emails:}")
+    private String adminEmails;
+
 
     private static final int HORAS_PLAZO = 12;
 
@@ -147,8 +155,14 @@ public class ProyectoService {
         if (proyecto.getEstado() != WorkflowEstado.PENDIENTE) {
             throw new BusinessException("El proyecto no está disponible para postulaciones");
         }
-        if (postulacionRepository.existsByProyectoIdAndEstudianteId(proyectoId, estudiante.getId())) {
-            throw new BusinessException("Ya postulaste a este proyecto");
+        List<EstadoPostulacion> estadosActivos = List.of(
+                EstadoPostulacion.PENDIENTE,
+                EstadoPostulacion.PRESELECCIONADO,
+                EstadoPostulacion.VALIDADO_MYPE,
+                EstadoPostulacion.CONFIRMADO
+        );
+        if (postulacionRepository.existsPostulacionActiva(proyectoId, estudiante.getId(), estadosActivos)) {
+            throw new BusinessException("Ya tienes una postulación activa en este proyecto. No puedes postular nuevamente.");
         }
         long proyectosActivos = contarProyectosActivosDelEstudiante(estudiante.getId());
         int maxProyectos = estudiante.getLimiteProyectos();
@@ -165,6 +179,25 @@ public class ProyectoService {
                 .archivoAdjunto(request.archivoAdjunto())
                 .build());
 
+        if (adminEmails != null && !adminEmails.isBlank()) {
+            String[] admins = adminEmails.split(",");
+            for (String adminEmail : admins) {
+                try {
+                    emailService.enviarCorreoNotificacion(
+                            adminEmail.trim(),
+                            "Nueva postulación pendiente de revisión",
+                            String.format("El estudiante %s ha postulado al proyecto \"%s\" (ID: %d). Inicia sesión en el panel de administración para revisar y preseleccionar a los candidatos.",
+                                    estudiante.getUsuario().getNombre(),
+                                    proyecto.getTitulo(),
+                                    proyecto.getId()),
+                            "Administrador"
+                    );
+                } catch (Exception e) {
+                    log.error("Error al enviar email al admin {}: {}", adminEmail, e.getMessage());
+                }
+            }
+        }
+
         notificacionService.crearNotificacion(
                 proyecto.getMype().getUsuario(),
                 "Nueva postulación recibida",
@@ -174,6 +207,74 @@ public class ProyectoService {
                 "/dashboard/postulaciones/" + proyecto.getId()
         );
         return toPostulacionResponse(postulacion);
+    }
+
+    @Transactional
+    public void cancelarProyecto(Long proyectoId, String emailAdmin) {
+        Usuario admin = validarRolAdmin(emailAdmin);
+        Proyecto proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        if (proyecto.getEstado() == WorkflowEstado.COMPLETADO || proyecto.getEstado() == WorkflowEstado.CANCELADO) {
+            throw new BusinessException("No se puede cancelar un proyecto que ya está completado o cancelado.");
+        }
+
+        WorkflowEstado estadoAnterior = proyecto.getEstado();
+        proyecto.setEstado(WorkflowEstado.CANCELADO);
+        proyectoRepository.save(proyecto);
+
+        // Registrar historial
+        workflowHistorialRepository.save(WorkflowHistorial.builder()
+                .proyecto(proyecto)
+                .cambiadoPor(admin)
+                .estadoAnterior(estadoAnterior)
+                .estadoNuevo(WorkflowEstado.CANCELADO)
+                .comentario("Proyecto cancelado por el administrador.")
+                .build());
+
+        // Rechazar TODAS las postulaciones (incluyendo CONFIRMADO)
+        List<Postulacion> postulaciones = postulacionRepository.findByProyectoId(proyectoId);
+        for (Postulacion p : postulaciones) {
+            if (p.getEstado() != EstadoPostulacion.RECHAZADO &&
+                    p.getEstado() != EstadoPostulacion.RETIRADO &&
+                    p.getEstado() != EstadoPostulacion.EXPIRADO) {
+                p.setEstado(EstadoPostulacion.RECHAZADO);
+                p.setFechaRespuesta(LocalDateTime.now());
+                p.setFechaLimiteConfirmacion(null);
+                postulacionRepository.save(p);
+
+                // Notificar al estudiante
+                notificacionService.crearNotificacion(
+                        p.getEstudiante().getUsuario(),
+                        "Proyecto cancelado",
+                        "El proyecto \"" + proyecto.getTitulo() + "\" ha sido cancelado. Tu postulación ha sido rechazada.",
+                        TipoNotificacion.POSTULACION,
+                        "/mis-postulaciones"
+                );
+                // Enviar email
+                emailService.enviarCorreoNotificacion(
+                        p.getEstudiante().getUsuario().getEmail(),
+                        "Proyecto cancelado",
+                        "Lamentamos informarte que el proyecto \"" + proyecto.getTitulo() + "\" ha sido cancelado por el administrador.",
+                        p.getEstudiante().getUsuario().getNombre()
+                );
+            }
+        }
+
+        // Notificar a la MYPE
+        notificacionService.crearNotificacion(
+                proyecto.getMype().getUsuario(),
+                "Tu proyecto ha sido cancelado",
+                "El administrador canceló el proyecto \"" + proyecto.getTitulo() + "\". Por favor contacta con soporte si tienes dudas.",
+                TipoNotificacion.PROYECTO,
+                "/dashboard/proyectos"
+        );
+        emailService.enviarCorreoNotificacion(
+                proyecto.getMype().getUsuario().getEmail(),
+                "Proyecto cancelado",
+                "El administrador canceló tu proyecto \"" + proyecto.getTitulo() + "\".",
+                proyecto.getMype().getUsuario().getNombre()
+        );
     }
 
     @Transactional
@@ -239,6 +340,83 @@ public class ProyectoService {
         }
 
         return toResponse(guardado);
+    }
+
+    @Transactional
+    public void abrirVacantes(Long proyectoId, List<Long> estudianteIds, String emailAdmin) {
+        Usuario admin = validarRolAdmin(emailAdmin);
+        Proyecto proyecto = proyectoRepository.findById(proyectoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+        // Solo se permite si el proyecto está en EN_DESARROLLO o PENDIENTE
+        if (proyecto.getEstado() != WorkflowEstado.EN_DESARROLLO && proyecto.getEstado() != WorkflowEstado.PENDIENTE) {
+            throw new BusinessException("Solo se pueden abrir vacantes en proyectos en estado EN_DESARROLLO o PENDIENTE.");
+        }
+
+        List<Postulacion> postulacionesAExpulsar = postulacionRepository.findByProyectoId(proyectoId)
+                .stream()
+                .filter(p -> estudianteIds.contains(p.getEstudiante().getId()))
+                .toList();
+
+        for (Postulacion p : postulacionesAExpulsar) {
+            if (p.getEstado() != EstadoPostulacion.CONFIRMADO) {
+                throw new BusinessException("Solo se pueden expulsar estudiantes que hayan confirmado su participación.");
+            }
+            p.setEstado(EstadoPostulacion.RECHAZADO);  // o RETIRADO, según prefieras
+            p.setFechaRespuesta(LocalDateTime.now());
+            p.setFechaLimiteConfirmacion(null);
+            postulacionRepository.save(p);
+
+            // Notificar al estudiante expulsado
+            notificacionService.crearNotificacion(
+                    p.getEstudiante().getUsuario(),
+                    "Has sido retirado del proyecto",
+                    "El administrador ha abierto vacantes en el proyecto \"" + proyecto.getTitulo() + "\". Tu participación ha sido cancelada.",
+                    TipoNotificacion.POSTULACION,
+                    "/mis-postulaciones"
+            );
+            emailService.enviarCorreoNotificacion(
+                    p.getEstudiante().getUsuario().getEmail(),
+                    "Cambios en tu proyecto",
+                    "Has sido retirado del proyecto \"" + proyecto.getTitulo() + "\" para liberar vacantes.",
+                    p.getEstudiante().getUsuario().getNombre()
+            );
+        }
+
+        // Verificar cuántos confirmados quedan
+        long confirmadosRestantes = postulacionRepository.countByProyectoIdAndEstado(proyectoId, EstadoPostulacion.CONFIRMADO);
+
+        if (confirmadosRestantes == 0) {
+            // El proyecto se queda sin estudiantes: volver a PENDIENTE
+            WorkflowEstado estadoAnterior = proyecto.getEstado();
+            proyecto.setEstado(WorkflowEstado.PENDIENTE);
+            proyecto.setFechaInicioReal(null);
+            proyectoRepository.save(proyecto);
+
+            workflowHistorialRepository.save(WorkflowHistorial.builder()
+                    .proyecto(proyecto)
+                    .cambiadoPor(admin)
+                    .estadoAnterior(estadoAnterior)
+                    .estadoNuevo(WorkflowEstado.PENDIENTE)
+                    .comentario("Se abrieron vacantes y no quedan estudiantes confirmados. Proyecto regresa a PENDIENTE.")
+                    .build());
+        } else {
+            // Aún hay estudiantes: mantener EN_DESARROLLO, solo notificar
+            notificacionService.crearNotificacion(
+                    proyecto.getMype().getUsuario(),
+                    "Vacantes abiertas en tu proyecto",
+                    "El administrador ha liberado " + postulacionesAExpulsar.size() + " cupo(s) en \"" + proyecto.getTitulo() + "\". Ahora hay " + confirmadosRestantes + " estudiante(s) activo(s).",
+                    TipoNotificacion.PROYECTO,
+                    "/dashboard/proyectos/" + proyectoId
+            );
+            emailService.enviarCorreoNotificacion(
+                    proyecto.getMype().getUsuario().getEmail(),
+                    "Vacantes abiertas",
+                    "Se han abierto " + postulacionesAExpulsar.size() + " vacantes en tu proyecto \"" + proyecto.getTitulo() + "\". Los estudiantes expulsados han sido notificados.",
+                    proyecto.getMype().getUsuario().getNombre()
+            );
+        }
+
     }
 
     @Transactional(readOnly = true)
@@ -410,6 +588,20 @@ public class ProyectoService {
         if (esAdmin && nuevoEstado == EstadoPostulacion.PRESELECCIONADO) {
             long activos = contarProyectosActivosDelEstudiante(postulacion.getEstudiante().getId());
             int limite = postulacion.getEstudiante().getLimiteProyectos();
+            try {
+                String mypeEmail = proyecto.getMype().getUsuario().getEmail();
+                String mypeNombre = proyecto.getMype().getUsuario().getNombre();
+                String titulo = "Estudiante preseleccionado en tu proyecto";
+                String mensaje = String.format(
+                        "El administrador ha preseleccionado al estudiante %s para tu proyecto \"%s\". Ingresa al dashboard para validar o rechazar esta selección. Tienes %d horas para responder.",
+                        postulacion.getEstudiante().getUsuario().getNombre(),
+                        proyecto.getTitulo(),
+                        HORAS_PLAZO
+                );
+                emailService.enviarCorreoNotificacion(mypeEmail, titulo, mensaje, mypeNombre);
+            } catch (Exception e) {
+                log.error("Error al enviar email a la MYPE sobre preselección: {}", e.getMessage());
+            }
             if (activos >= limite) {
                 throw new BusinessException(
                         "Este estudiante ya alcanzó su límite de proyectos activos. " +
@@ -776,9 +968,8 @@ public class ProyectoService {
     // ══════════════════════════════════════════════════════════════
 
     @Transactional(readOnly = true)
-    public List<ProyectoAdminResponse> listarParaAdmin(String emailAdmin) {
-        validarRolAdmin(emailAdmin);
-        return proyectoRepository.findAllConMype().stream().map(p -> {
+    public Page<ProyectoAdminResponse> listarParaAdmin(Pageable pageable) {
+        return proyectoRepository.findAllConMype(pageable).map(p -> {
             long confirmados = postulacionRepository.findByProyectoId(p.getId())
                     .stream()
                     .filter(post -> post.getEstado() == EstadoPostulacion.CONFIRMADO || post.getEstado() == EstadoPostulacion.ACEPTADO)
@@ -795,7 +986,7 @@ public class ProyectoService {
                     pendientes,
                     p.getDelegarGestionAdmin()
             );
-        }).toList();
+        });
     }
 
     @Transactional
@@ -999,6 +1190,28 @@ public class ProyectoService {
                     valorTexto, archivoUrl));
         }
         return responses;
+    }
+
+    @Transactional(readOnly = true)
+    public MypePerfilPublicoResponse obtenerPerfilPublicoMype(Long mypeId) {
+        Mype mype = mypeRepository.findById(mypeId)
+                .orElseThrow(() -> new ResourceNotFoundException("MYPE", mypeId));
+        return MypePerfilPublicoResponse.builder()
+                .id(mype.getId())
+                .nombreComercial(mype.getNombreComercial())
+                .rubro(mype.getRubro())
+                .descripcion(mype.getDescripcion())
+                .sitioWeb(mype.getSitioWeb())
+                .instagram(mype.getInstagram())
+                .facebook(mype.getFacebook())
+                .tiktok(mype.getTiktok())
+                .whatsapp(mype.getWhatsapp())
+                .direccion(mype.getDireccion())
+                .ciudad(mype.getCiudad())
+                .sector(mype.getSector())
+                .latitud(mype.getLatitud())
+                .longitud(mype.getLongitud())
+                .build();
     }
 
     @Transactional

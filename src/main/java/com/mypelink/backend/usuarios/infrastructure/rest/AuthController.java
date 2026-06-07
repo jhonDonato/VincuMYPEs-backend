@@ -29,6 +29,11 @@ public class AuthController {
     @Value("${app.email.verification.enabled:false}")
     private boolean verificationEnabled;
 
+    @GetMapping("/check-telefono")
+    public ResponseEntity<Boolean> existsByTelefono(@RequestParam String telefono) {
+        return ResponseEntity.ok(usuarioRepository.existsByTelefono(telefono));
+    }
+
     @PostMapping("/register/estudiante")
     public ResponseEntity<AuthResponse> registerEstudiante(@Valid @RequestBody RegisterEstudianteRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(authService.registerEstudiante(request));

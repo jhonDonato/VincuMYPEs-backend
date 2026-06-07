@@ -23,7 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.stream.Collectors;
-
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 @Service
 @RequiredArgsConstructor
 public class AdminUsuarioService {
@@ -35,18 +36,28 @@ public class AdminUsuarioService {
     private final PostulacionRepository postulacionRepository;
     private final EvaluacionRepository evaluacionRepository;
 
+    // AdminUsuarioService.java
     @Transactional(readOnly = true)
-    public List<AdminUsuarioResponse> listarUsuarios() {
-        return usuarioRepository.findAll().stream().map(u -> {
+    public Page<AdminUsuarioResponse> listarUsuarios(Pageable pageable, String rol) {
+        Page<Usuario> usuariosPage;
+
+        // Filtrar por rol si se proporciona y no es "TODOS"
+        if (rol != null && !rol.isEmpty() && !"TODOS".equals(rol)) {
+            String rolNombre = "ROLE_" + rol;
+            usuariosPage = usuarioRepository.findByRolNombre(rolNombre, pageable);
+        } else {
+            usuariosPage = usuarioRepository.findAll(pageable);
+        }
+
+        return usuariosPage.map(u -> {
             String rolCompleto = u.getRol().getNombre();
             String rolSimplificado = rolCompleto.replace("ROLE_", "");
-
             String estado = u.getActivo() ? "ACTIVO" : "SUSPENDIDO";
             String carrera = null;
             String sector = null;
             Integer limiteProyectos = null;
-            Double promedioEstrellas = null;    // ← declarado
-            Long proyectosCompletados = null;   // ← declarado
+            Double promedioEstrellas = null;
+            Long proyectosCompletados = null;
 
             if (rolCompleto.equals("ROLE_ESTUDIANTE")) {
                 var estudianteOpt = estudianteRepository.findByUsuarioId(u.getId());
@@ -54,11 +65,9 @@ public class AdminUsuarioService {
                     Estudiante est = estudianteOpt.get();
                     carrera = est.getCarrera();
                     limiteProyectos = est.getLimiteProyectos();
-
-                    // Calcular reputación
                     List<Postulacion> postulaciones = postulacionRepository
                             .findByEstudianteIdWithDetails(est.getId());
-                    long completados = postulaciones.stream()
+                    proyectosCompletados = postulaciones.stream()
                             .filter(p -> p.getEstado() == EstadoPostulacion.CONFIRMADO)
                             .count();
                     List<Evaluacion> evaluaciones = evaluacionRepository
@@ -68,7 +77,6 @@ public class AdminUsuarioService {
                             .average()
                             .orElse(0.0);
                     promedioEstrellas = Math.round(promedio * 10.0) / 10.0;
-                    proyectosCompletados = completados;
                 }
             } else if (rolCompleto.equals("ROLE_MYPE")) {
                 var mypeOpt = mypeRepository.findByUsuarioId(u.getId());
@@ -82,15 +90,16 @@ public class AdminUsuarioService {
                     u.getId(),
                     u.getNombre(),
                     u.getEmail(),
+                    u.getTelefono() != null ? u.getTelefono() : "",
                     rolSimplificado,
                     estado,
                     carrera,
                     sector,
                     limiteProyectos,
-                    promedioEstrellas,      // ← nuevo campo
-                    proyectosCompletados    // ← nuevo campo
+                    promedioEstrellas,
+                    proyectosCompletados
             );
-        }).collect(Collectors.toList());
+        });
     }
 
     @Transactional

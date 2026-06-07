@@ -4,6 +4,7 @@ public record AdminUsuarioResponse(
         Long id,
         String nombre,
         String email,
+        String telefono,
         String rol,
         String estado,
         String carrera,

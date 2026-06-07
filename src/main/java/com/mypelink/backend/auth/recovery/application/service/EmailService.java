@@ -51,7 +51,9 @@ public class EmailService {
         } catch (ResendException e) {
             log.error("Error al enviar correo de notificación a {}: {}", to, e.getMessage());
         }
+
     }
+
 
     private String buildEmailTemplate(String otpCode, String subject) {
         return """

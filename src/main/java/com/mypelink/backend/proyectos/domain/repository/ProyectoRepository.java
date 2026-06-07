@@ -43,4 +43,8 @@ public interface ProyectoRepository extends JpaRepository<Proyecto, Long> {
 
     @Query("SELECT p.areaSistemas, COUNT(p) FROM Proyecto p GROUP BY p.areaSistemas")
     List<Object[]> countGroupByAreaSistemas();
+
+    // ProyectoRepository.java
+    @Query("SELECT p FROM Proyecto p JOIN FETCH p.mype ORDER BY p.fechaCreacion DESC")
+    Page<Proyecto> findAllConMype(Pageable pageable);
 }

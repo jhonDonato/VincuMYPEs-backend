@@ -1,8 +1,13 @@
 package com.mypelink.backend.proyectos.infrastructure.rest;
 
+import com.mypelink.backend.proyectos.application.dto.AbrirVacantesRequest;
 import com.mypelink.backend.proyectos.application.dto.ProyectoAdminResponse;
 import com.mypelink.backend.proyectos.application.service.ProyectoService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -20,9 +25,15 @@ public class AdminProyectoController {
     private final ProyectoService proyectoService;
 
     @GetMapping
-    public ResponseEntity<List<ProyectoAdminResponse>> listarProyectosParaAdmin(
+    public ResponseEntity<Page<ProyectoAdminResponse>> listarProyectosParaAdmin(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "id") String sortField,
+            @RequestParam(defaultValue = "asc") String sortDirection,
             @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(proyectoService.listarParaAdmin(userDetails.getUsername()));
+        Sort sort = Sort.by(Sort.Direction.fromString(sortDirection), sortField);
+        Pageable pageable = PageRequest.of(page, size, sort);
+        return ResponseEntity.ok(proyectoService.listarParaAdmin(pageable));
     }
 
     @PatchMapping("/{id}/ceder-gestion")
@@ -40,5 +51,22 @@ public class AdminProyectoController {
             @AuthenticationPrincipal UserDetails userDetails) {
         proyectoService.auditarAbandono(id, postulacionId, userDetails.getUsername());
         return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{id}/cancelar")
+    public ResponseEntity<Void> cancelarProyecto(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        proyectoService.cancelarProyecto(id, userDetails.getUsername());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/abrir-vacantes")
+    public ResponseEntity<Void> abrirVacantes(
+            @PathVariable Long id,
+            @RequestBody AbrirVacantesRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        proyectoService.abrirVacantes(id, request.estudianteIds(), userDetails.getUsername());
+        return ResponseEntity.noContent().build();
     }
 }

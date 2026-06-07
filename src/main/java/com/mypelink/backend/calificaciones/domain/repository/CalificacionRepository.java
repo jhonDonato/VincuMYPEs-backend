@@ -24,4 +24,49 @@ public interface CalificacionRepository extends JpaRepository<Calificacion, Long
 
     @Query("SELECT AVG(c.puntuacion) FROM Calificacion c WHERE c.calificado.rol.nombre = :rolNombre")
     Double promedioByCalificadoRol(@Param("rolNombre") String rolNombre);
+
+    @Query("""
+    SELECT c.id, c.createdAt, p.titulo, calif.id, califdo.nombre, c.puntuacion,
+           p.fechaInicio, p.fechaLimite
+    FROM Calificacion c
+    JOIN c.proyecto p
+    JOIN c.calificador calif
+    JOIN c.calificado califdo
+    WHERE calif.rol.nombre = 'ROLE_MYPE' AND califdo.rol.nombre = 'ROLE_ESTUDIANTE'
+    ORDER BY c.createdAt DESC
+""")
+    List<Object[]> findReportesMypeAEstudiante();
+
+    // Calificaciones donde MYPE califica a ESTUDIANTE (ya lo tienes casi igual)
+    @Query("""
+    SELECT c.id, c.createdAt, p.titulo, calif.id, califdo.nombre, c.puntuacion
+    FROM Calificacion c
+    JOIN c.proyecto p
+    JOIN c.calificador calif
+    JOIN c.calificado califdo
+    WHERE calif.rol.nombre = 'ROLE_MYPE' AND califdo.rol.nombre = 'ROLE_ESTUDIANTE'
+    ORDER BY c.createdAt DESC
+""")
+    List<Object[]> findMypeAEstudiante();
+
+    @Query("""
+    SELECT c.id, c.createdAt, p.titulo, calif.nombre, califdo.id, c.puntuacion
+    FROM Calificacion c
+    JOIN c.proyecto p
+    JOIN c.calificador calif
+    JOIN c.calificado califdo
+    WHERE calif.rol.nombre = 'ROLE_ESTUDIANTE' AND califdo.rol.nombre = 'ROLE_MYPE'
+    ORDER BY c.createdAt DESC
+""")
+    List<Object[]> findEstudianteAMype();
+
+    // Promedios segmentados
+    @Query("SELECT COALESCE(AVG(c.puntuacion), 0.0) FROM Calificacion c WHERE c.calificador.rol.nombre = 'ROLE_MYPE' AND c.calificado.rol.nombre = 'ROLE_ESTUDIANTE'")
+    Double promedioMypeAEstudiante();
+
+    @Query("SELECT COALESCE(AVG(c.puntuacion), 0.0) FROM Calificacion c WHERE c.calificador.rol.nombre = 'ROLE_ESTUDIANTE' AND c.calificado.rol.nombre = 'ROLE_MYPE'")
+    Double promedioEstudianteAMype();
+
+    @Query("SELECT COALESCE(AVG(c.puntuacion), 0.0) FROM Calificacion c")
+    Double promedioGeneral();
 }
