@@ -1,5 +1,6 @@
 package com.mypelink.backend.shared.infrastructure.config;
 
+import com.mypelink.backend.shared.infrastructure.filter.MaintenanceFilter;
 import com.mypelink.backend.shared.infrastructure.jwt.JwtAuthFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -32,6 +33,8 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final UserDetailsService userDetailsService;
+    private final MaintenanceFilter maintenanceFilter;
+
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -43,6 +46,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         // API RENIEC pública
                         .requestMatchers("/api/reniec/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/configuracion/estado").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/proyectos/{id}").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/proyectos").permitAll()
                         .requestMatchers("/api/proyectos/**").authenticated()
@@ -59,7 +63,12 @@ public class SecurityConfig {
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(
+                        jwtAuthFilter,
+                        UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(
+                        maintenanceFilter,
+                        JwtAuthFilter.class)
                 .build();
     }
 

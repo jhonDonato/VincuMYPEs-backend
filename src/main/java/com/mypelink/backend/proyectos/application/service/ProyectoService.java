@@ -1026,7 +1026,8 @@ public class ProyectoService {
                 p.getDiasEstimados(),
                 p.getFechaInicioReal(),
                 fechaLimiteCalculada,
-                cuposOcupados
+                cuposOcupados,
+                p.getMype() != null ? p.getMype().getUsuario().getId() : null
         );
     }
 

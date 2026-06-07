@@ -10,6 +10,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -24,6 +26,9 @@ public class AuthController {
     private final MypeRepository mypeRepository;
     private final EstudianteRepository estudianteRepository;
 
+    @Value("${app.email.verification.enabled:false}")
+    private boolean verificationEnabled;
+
     @PostMapping("/register/estudiante")
     public ResponseEntity<AuthResponse> registerEstudiante(@Valid @RequestBody RegisterEstudianteRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(authService.registerEstudiante(request));
@@ -37,6 +42,28 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(authService.login(request));
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refresh(@RequestBody Map<String, String> body) {
+        return ResponseEntity.ok(authService.refreshAccessToken(body.get("refreshToken")));
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@RequestBody Map<String, String> body) {
+        authService.logout(body.get("refreshToken"));
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<Void> changePassword(
+            @RequestBody ChangePasswordRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        authService.changePassword(userDetails.getUsername(), request);
+        return ResponseEntity.ok().build();
     }
 
     // ── ENDPOINTS DE VALIDACIÓN ──
@@ -60,9 +87,6 @@ public class AuthController {
     public ResponseEntity<Boolean> existsByCodigo(@RequestParam String codigo) {
         return ResponseEntity.ok(estudianteRepository.existsByCodigoEstudiante(codigo));
     }
-
-    @Value("${app.email.verification.enabled:false}")
-    private boolean verificationEnabled;
 
     @PostMapping("/verify-email")
     public ResponseEntity<?> sendVerificationOtp(@RequestParam String email) {

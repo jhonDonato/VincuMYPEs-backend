@@ -5,7 +5,6 @@ import com.mypelink.backend.shared.domain.enums.WorkflowEstado;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-
 public record ProyectoResponse(
         Long id,
         String titulo,
@@ -24,5 +23,6 @@ public record ProyectoResponse(
         Integer diasEstimados,
         LocalDateTime fechaInicioReal,
         LocalDate fechaLimiteCalculada,
-        Long cuposOcupados
+        Long cuposOcupados,
+        Long mypeUsuarioId   // ← NUEVO
 ) {}

@@ -1,6 +1,7 @@
 package com.mypelink.backend.certificaciones.application.dto;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 public record CertificadoAdminResponse(
         Long id,
@@ -12,5 +13,6 @@ public record CertificadoAdminResponse(
         String nombreProyecto,
         String nombreMype,
         String urlCertificado,
-        LocalDate fechaEmision
+        LocalDate fechaEmision,
+        LocalDateTime fechaEnvio
 ) {}

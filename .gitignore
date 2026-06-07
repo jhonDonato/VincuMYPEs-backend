@@ -35,3 +35,4 @@ application-local.properties
 application.properties
 .env
 .fake
+CLAUDE.md

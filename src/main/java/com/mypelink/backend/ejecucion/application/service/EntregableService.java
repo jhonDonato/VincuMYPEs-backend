@@ -13,10 +13,13 @@ import com.mypelink.backend.shared.domain.enums.TipoNotificacion;
 import com.mypelink.backend.shared.infrastructure.aws.S3Service;
 import com.mypelink.backend.shared.infrastructure.exception.BusinessException;
 import com.mypelink.backend.shared.infrastructure.exception.ResourceNotFoundException;
+import com.mypelink.backend.proyectos.application.service.ProyectoService;
+import com.mypelink.backend.shared.domain.enums.WorkflowEstado;
 import com.mypelink.backend.usuarios.domain.repository.EstudianteRepository;
 import com.mypelink.backend.usuarios.domain.repository.MypeRepository;
 import com.mypelink.backend.usuarios.domain.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +34,7 @@ import java.util.stream.Collectors;
 import com.mypelink.backend.usuarios.domain.model.Usuario;
 import com.mypelink.backend.proyectos.domain.model.Postulacion;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class EntregableService {
@@ -43,6 +47,7 @@ public class EntregableService {
     private final UsuarioRepository usuarioRepository;
     private final NotificacionService notificacionService;
     private final S3Service s3Service;
+    private final ProyectoService proyectoService;
 
     @Transactional
     public EntregableResponse subir(Long proyectoId, String titulo, String descripcion, MultipartFile archivo,
@@ -200,6 +205,21 @@ public class EntregableService {
                         + request.estado().name(),
                 TipoNotificacion.PROYECTO,
                 "/mis-entregables");
+
+        if (request.estado() == EstadoEntregable.APROBADO
+                && proyecto.getEstado() != WorkflowEstado.COMPLETADO) {
+            List<Entregable> todosEntregables = entregableRepository.findByProyectoId(proyectoId);
+            boolean todosAprobados = !todosEntregables.isEmpty()
+                    && todosEntregables.stream().allMatch(e -> e.getEstado() == EstadoEntregable.APROBADO);
+            if (todosAprobados) {
+                try {
+                    proyectoService.completarProyecto(proyectoId, emailMype);
+                    log.info("Proyecto {} completado automáticamente al aprobar el último entregable", proyectoId);
+                } catch (Exception ex) {
+                    log.error("Error al completar automáticamente el proyecto {}: {}", proyectoId, ex.getMessage());
+                }
+            }
+        }
 
         return toResponse(saved);
     }

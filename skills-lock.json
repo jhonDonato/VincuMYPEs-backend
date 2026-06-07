@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "caveman": {
+      "source": "juliusbrussee/caveman",
+      "sourceType": "github",
+      "skillPath": "skills/caveman/SKILL.md",
+      "computedHash": "7935e83f9c6a8b7cbb5404d144b0d19e3ba93583f4388301c3dada37cd25adf8"
+    },
+    "memory-bank": {
+      "source": "nagendhra-web/memory-bank",
+      "sourceType": "github",
+      "skillPath": "skills/memory-bank/SKILL.md",
+      "computedHash": "11b255e6d63cd0d908d57bc79cd24e429017e3e29039cee646803d6bf7f336f0"
+    },
+    "usage-limit-reducer": {
+      "source": "dubibubii/usage-limit-reducer",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "5643d2c29e6ac3b249c1cb5ed9de98fa95cf3baf1eb87187de7af1865299a800"
+    }
+  }
+}

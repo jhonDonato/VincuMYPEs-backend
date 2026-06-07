@@ -22,11 +22,15 @@ public class JwtService {
     private long expiration;
 
     public String generateToken(UserDetails userDetails, Map<String, Object> extraClaims) {
+        return generateToken(userDetails, extraClaims, expiration);
+    }
+
+    public String generateToken(UserDetails userDetails, Map<String, Object> extraClaims, long expirationMillis) {
         return Jwts.builder()
                 .claims(extraClaims)
                 .subject(userDetails.getUsername())
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + expiration))
+                .expiration(new Date(System.currentTimeMillis() + expirationMillis))
                 .signWith(getKey())
                 .compact();
     }

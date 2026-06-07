@@ -6,6 +6,7 @@ import com.mypelink.backend.usuarios.domain.model.Usuario;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(
@@ -56,8 +57,8 @@ public class Certificado {
     @Column(nullable = false)
     private Boolean activo;
 
-    @Column(name = "enviado_email", nullable = false)
-    private Boolean enviadoEmail = false;
+    @Column(name = "fecha_envio")
+    private LocalDateTime fechaEnvio;
 
     @PrePersist
     protected void onCreate() {
@@ -65,4 +66,3 @@ public class Certificado {
         if (this.activo == null) this.activo = true;
     }
 }
-

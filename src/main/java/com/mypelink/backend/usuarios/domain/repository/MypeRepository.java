@@ -8,4 +8,5 @@ import java.util.Optional;
 public interface MypeRepository extends JpaRepository<Mype, Long> {
     Optional<Mype> findByUsuarioId(Long usuarioId);
     boolean existsByRuc(String ruc);
+
 }
