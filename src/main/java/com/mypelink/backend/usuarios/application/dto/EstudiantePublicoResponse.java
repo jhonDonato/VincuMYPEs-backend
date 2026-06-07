@@ -29,5 +29,7 @@ public record EstudiantePublicoResponse(
         String codigoEstudiante,
         String barrio,
         BigDecimal lat,
-        BigDecimal lng
+        BigDecimal lng,
+
+        Long usuarioId   // ← NUEVO
 ) {}

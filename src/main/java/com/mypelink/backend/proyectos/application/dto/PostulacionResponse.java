@@ -17,12 +17,10 @@ public record PostulacionResponse(
         LocalDateTime fechaLimiteConfirmacion,
         boolean estudianteOcupado,
         Boolean esDelegado,
-        // ✅ NUEVOS
         WorkflowEstado proyectoEstado,
         Integer cupos,
         LocalDateTime proyectoFechaInicioReal,
         String proyectoArea,
-        // ✅ NUEVOS
         LocalDateTime proyectoFechaFin,
         java.util.List<String> integrantes
 

@@ -173,7 +173,8 @@ public class EstudianteService {
                 revelarSensibles ? estudiante.getCodigoEstudiante() : null,
                 revelarSensibles ? estudiante.getBarrio() : null,
                 revelarSensibles ? estudiante.getLat() : null,
-                revelarSensibles ? estudiante.getLng() : null
+                revelarSensibles ? estudiante.getLng() : null,
+                usuario.getId()   // ← NUEVO
         );
     }
 
