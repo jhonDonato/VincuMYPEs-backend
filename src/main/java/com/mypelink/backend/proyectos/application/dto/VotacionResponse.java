@@ -21,6 +21,7 @@ public record VotacionResponse(
             Long estudianteId,
             String estudianteNombre,
             long votosRecibidos,
-            boolean esGanador
+            boolean esGanador,
+            boolean esYo
     ) {}
 }

@@ -128,9 +128,6 @@ public class VotacionService {
             throw new BusinessException("Ya has votado en esta elección");
         }
 
-        if (request.candidatoId().equals(votante.getId())) {
-            throw new BusinessException("No puedes votar por ti mismo");
-        }
 
         Estudiante candidato = estudianteRepository.findById(request.candidatoId())
                 .orElseThrow(() -> new ResourceNotFoundException("Estudiante", request.candidatoId()));
@@ -160,6 +157,35 @@ public class VotacionService {
         }
 
         return buildVotacionResponse(votacion, votante.getId());
+    }
+    // ═══════════════════════════════════════════════════════════
+    // PROPONERSE COMO CANDIDATO A DELEGADO
+    // ═══════════════════════════════════════════════════════════
+    @Transactional
+    public VotacionResponse proponerseComoCandidato(Long proyectoId, String emailEstudiante) {
+        Usuario usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+
+        Estudiante estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil de estudiante no encontrado"));
+
+        VotacionDelegado votacion = votacionRepository.findActivaByProyectoId(proyectoId)
+                .orElseThrow(() -> new BusinessException("No hay votación activa para este proyecto"));
+
+        // Verificar que el estudiante pertenece al proyecto y está confirmado
+        Postulacion postulacion = postulacionRepository
+                .findByProyectoIdAndEstudianteId(proyectoId, estudiante.getId())
+                .orElseThrow(() -> new BusinessException("No eres parte de este proyecto"));
+
+        if (postulacion.getEstado() != EstadoPostulacion.CONFIRMADO) {
+            throw new BusinessException("Solo estudiantes confirmados pueden postularse");
+        }
+
+        // No es necesario hacer nada más, los candidatos son todos los confirmados
+        // Este endpoint simplemente confirma que el estudiante quiere participar
+        // y devuelve el estado actual de la votación
+
+        return buildVotacionResponse(votacion, estudiante.getId());
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -485,11 +511,15 @@ public class VotacionService {
             boolean esGanador = votacion.getPostulacionGanadora() != null &&
                     votacion.getPostulacionGanadora().getId().equals(p.getId());
 
+            boolean esYo = miEstudianteId != null &&
+                    p.getEstudiante().getId().equals(miEstudianteId);
+
             candidatos.add(new VotacionResponse.CandidatoDto(
                     p.getEstudiante().getId(),
                     p.getEstudiante().getUsuario().getNombre(),
                     votosRecibidos,
-                    esGanador
+                    esGanador,
+                    esYo
             ));
         }
 

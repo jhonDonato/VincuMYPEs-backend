@@ -41,11 +41,15 @@ import com.mypelink.backend.usuarios.domain.model.Estudiante;
 import org.springframework.web.multipart.MultipartFile;
 import com.mypelink.backend.proyectos.application.service.VotacionService;
 import com.mypelink.backend.comunicacion.application.service.ChatGrupalService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import com.mypelink.backend.comunicacion.application.service.MensajeService;
 
 @Service
 @RequiredArgsConstructor
 public class ProyectoService {
-
+    private static final Logger log = LoggerFactory.getLogger(ProyectoService.class);
+    private final MensajeService mensajeService;
     private final ProyectoRepository proyectoRepository;
     private final PostulacionRepository postulacionRepository;
     private final MypeRepository mypeRepository;
@@ -263,13 +267,26 @@ public class ProyectoService {
                 .stream().map(this::toPostulacionResponse).toList();
     }
 
+    // ✅ ACTUALIZADO: ahora es transaccional y agrega la lista de integrantes confirmados por proyecto
+    @Transactional(readOnly = true)
     public List<PostulacionResponse> misPostulaciones(String emailEstudiante) {
         var usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
         var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
                 .orElseThrow(() -> new BusinessException("Perfil de estudiante no encontrado"));
+
         return postulacionRepository.findByEstudianteIdWithDetails(estudiante.getId())
-                .stream().map(this::toPostulacionResponse).toList();
+                .stream()
+                .map(p -> {
+                    List<String> integrantes = postulacionRepository
+                            .findByProyectoIdAndEstadoWithDetails(
+                                    p.getProyecto().getId(), EstadoPostulacion.CONFIRMADO)
+                            .stream()
+                            .map(m -> m.getEstudiante().getUsuario().getNombre())
+                            .toList();
+                    return toPostulacionResponse(p, integrantes);
+                })
+                .toList();
     }
 
     @Transactional
@@ -459,23 +476,14 @@ public class ProyectoService {
         }
 
         if (!esAdmin && nuevoEstado == EstadoPostulacion.VALIDADO_MYPE) {
-            System.out.println("=== DEBUG VALIDACION MYPE ===");
-            System.out.println("Postulacion ID: " + postulacion.getId());
-            System.out.println("Estudiante ID: " + postulacion.getEstudiante().getId());
             long activos = contarProyectosActivosDelEstudiante(postulacion.getEstudiante().getId());
             int limite = postulacion.getEstudiante().getLimiteProyectos();
-            System.out.println("Activos contados: " + activos);
-            System.out.println("Límite del estudiante: " + limite);
             if (activos >= limite) {
-                System.out.println("VALIDACION FALLIDA: se lanzará 409");
                 throw new BusinessException(
                         "Este estudiante ya alcanzó su límite de proyectos activos. " +
                                 "No puedes validarlo hasta que termine alguno de los actuales.",
                         HttpStatus.CONFLICT
                 );
-            }
-            else {
-                System.out.println("VALIDACION OK: activos < limite, se permite validar");
             }
             postulacion.setEstado(EstadoPostulacion.VALIDADO_MYPE);
             postulacion.setFechaLimiteConfirmacion(LocalDateTime.now().plusHours(HORAS_PLAZO));
@@ -614,16 +622,27 @@ public class ProyectoService {
                         .comentario("Cupos cubiertos. Estudiante " + usuario.getNombre() + " confirmó.")
                         .build());
                 // ═══════════════════════════════════════════
-                // ✅ NUEVO: Iniciar votación de delegado
+                // ✅ Delegado: individual = auto-delegado; grupal = votación
                 // ═══════════════════════════════════════════
-                try {
-                    votacionService.iniciarVotacion(proyecto.getId());
-                } catch (Exception e) {
-                    // Si falla la votación, no bloquear el flujo
-                    System.err.println("Error al iniciar votación: " + e.getMessage());
+                if (proyecto.getCupos() != null && proyecto.getCupos() == 1) {
+                    // Proyecto individual: el único confirmado es delegado automáticamente
+                    postulacionRepository
+                            .findByProyectoIdAndEstadoWithDetails(proyecto.getId(), EstadoPostulacion.CONFIRMADO)
+                            .forEach(pc -> {
+                                pc.setEsDelegado(true);
+                                postulacionRepository.save(pc);
+                            });
+                } else {
+                    // Proyecto grupal: se elige delegado por votación
+                    try {
+                        votacionService.iniciarVotacion(proyecto.getId());
+                    } catch (Exception e) {
+                        System.err.println("Error al iniciar votación: " + e.getMessage());
+                    }
                 }
 
-                // ✅ NUEVO: Crear chats grupales
+
+                // ✅ Crear chats grupales
                 try {
                     chatGrupalService.crearChatsParaProyecto(proyecto.getId());
                 } catch (Exception e) {
@@ -713,7 +732,6 @@ public class ProyectoService {
         if (entregables.isEmpty()) {
             throw new BusinessException("El proyecto no tiene entregables registrados");
         }
-        // Suponiendo que tienes un enum EstadoEntregable.APROBADO (ajusta el nombre si es diferente)
         boolean todosAprobados = entregables.stream()
                 .allMatch(e -> e.getEstado() == EstadoEntregable.APROBADO);
         if (!todosAprobados) {
@@ -721,6 +739,24 @@ public class ProyectoService {
         }
 
         proyecto.setEstado(WorkflowEstado.COMPLETADO);
+        proyecto.setFechaCompletado(LocalDateTime.now());
+
+        // ✅ ELIMINAR CHATS GRUPALES (EQUIPO + PROYECTO)
+        try {
+            chatGrupalService.eliminarChatsGrupalesDeProyecto(proyectoId);
+            log.info("Chats grupales eliminados para proyecto completado ID: {}", proyectoId);
+        } catch (Exception e) {
+            log.error("Error al eliminar chats grupales del proyecto {}: {}", proyectoId, e.getMessage());
+        }
+
+        // ✅ ELIMINAR CONVERSACIONES DIRECTAS (chats individuales)
+        try {
+            mensajeService.eliminarConversacionesDirectasDeProyecto(proyectoId);
+            log.info("Conversaciones directas eliminadas para proyecto completado ID: {}", proyectoId);
+        } catch (Exception e) {
+            log.error("Error al eliminar conversaciones directas del proyecto {}: {}", proyectoId, e.getMessage());
+        }
+
         var guardado = proyectoRepository.save(proyecto);
 
         // Notificar a estudiantes confirmados (opcional)
@@ -1001,7 +1037,7 @@ public class ProyectoService {
     }
 
     // ══════════════════════════════════════════════════════════════
-    // MAPPERS (sin cambios)
+    // MAPPERS
     // ══════════════════════════════════════════════════════════════
 
     private ProyectoResponse toResponse(Proyecto p) {
@@ -1031,17 +1067,16 @@ public class ProyectoService {
         );
     }
 
+    // ✅ Versión simple: delega en la versión con integrantes (sin lista)
     private PostulacionResponse toPostulacionResponse(Postulacion p) {
+        return toPostulacionResponse(p, null);
+    }
+
+    // ✅ Versión completa: incluye estado/cupos/fechas del proyecto e integrantes
+    private PostulacionResponse toPostulacionResponse(Postulacion p, List<String> integrantes) {
         long activos = contarProyectosActivosDelEstudiante(p.getEstudiante().getId());
         int limite = p.getEstudiante().getLimiteProyectos();
         boolean ocupado = activos >= limite;
-
-        System.out.println("=== DEPURACION POSTULACION ===");
-        System.out.println("Postulacion ID: " + p.getId());
-        System.out.println("Estudiante ID: " + p.getEstudiante().getId());
-        System.out.println("Proyectos activos: " + activos);
-        System.out.println("Límite del estudiante: " + limite);
-        System.out.println("¿Está ocupado?: " + ocupado);
 
         return new PostulacionResponse(
                 p.getId(), p.getProyecto().getId(), p.getProyecto().getTitulo(),
@@ -1049,8 +1084,17 @@ public class ProyectoService {
                 p.getEstado(), p.getMensajePostulacion(), p.getFechaPostulacion(),
                 p.getEstudiante().getCvUrl(),
                 p.getFechaLimiteConfirmacion(),
-                ocupado,            // ← TU CAMPO
-                p.getEsDelegado()   // ← CAMPO DE JHON
+                ocupado,            // ← campo de Enzo (ocupado)
+                p.getEsDelegado(),  // ← campo de Jhon (delegado)
+                // ✅ NUEVOS
+                p.getProyecto().getEstado(),
+                p.getProyecto().getCupos(),
+                p.getProyecto().getFechaInicioReal(),
+                p.getProyecto().getAreaSistemas() != null
+                        ? p.getProyecto().getAreaSistemas().name()
+                        : null,
+                p.getProyecto().getFechaCompletado(),   // ✅ fecha de culminación
+                integrantes                              // ✅ nombres de integrantes (null si no aplica)
         );
     }
 
@@ -1060,13 +1104,10 @@ public class ProyectoService {
                 WorkflowEstado.EN_DESARROLLO,
                 WorkflowEstado.EN_REVISION
         );
-        long count = postulacionRepository.countByEstudianteIdAndEstadoAndProyectoEstadoIn(
+        return postulacionRepository.countByEstudianteIdAndEstadoAndProyectoEstadoIn(
                 estudianteId,
                 EstadoPostulacion.CONFIRMADO,
                 proyectoEstadosActivos
         );
-        System.out.println("contarProyectosActivosDelEstudiante(" + estudianteId + ") = " + count);
-        return count;
-
     }
 }

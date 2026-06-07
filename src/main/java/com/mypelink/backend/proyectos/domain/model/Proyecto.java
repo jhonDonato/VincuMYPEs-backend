@@ -63,6 +63,9 @@ public class Proyecto {
     @Column(name = "fecha_inicio")
     private LocalDate fechaInicio;
 
+    @Column(name = "fecha_completado")
+    private LocalDateTime fechaCompletado;
+
     @Column(name = "fecha_limite")
     private LocalDate fechaLimite;
 

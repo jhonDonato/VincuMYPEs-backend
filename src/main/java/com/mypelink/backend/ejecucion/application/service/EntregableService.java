@@ -403,4 +403,22 @@ public class EntregableService {
 
         return resultado;
     }
+    @Transactional(readOnly = true)
+    public List<EntregableResponse> actividadDelEstudiante(String emailEstudiante) {
+        var usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
+                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+        var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
+                .orElseThrow(() -> new BusinessException("Perfil de estudiante no encontrado"));
+
+        // Proyectos donde el estudiante está CONFIRMADO (sea delegado o no)
+        var confirmadas = postulacionRepository
+                .findByEstudianteIdAndEstado(estudiante.getId(), EstadoPostulacion.CONFIRMADO);
+
+        List<EntregableResponse> resultado = new ArrayList<>();
+        for (Postulacion post : confirmadas) {
+            entregableRepository.findByProyectoIdWithDetails(post.getProyecto().getId())
+                    .forEach(e -> resultado.add(toResponse(e)));
+        }
+        return resultado;
+    }
 }

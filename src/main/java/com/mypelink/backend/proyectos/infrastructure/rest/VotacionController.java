@@ -66,6 +66,18 @@ public class VotacionController {
                 votacionService.obtenerVotacion(proyectoId, userDetails.getUsername())
         );
     }
+    // ═══════════════════════════════════════════════════════════
+    // PROPONERSE COMO CANDIDATO A DELEGADO
+    // ═══════════════════════════════════════════════════════════
+    @PostMapping("/proponerse")
+    @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE', 'ESTUDIANTE')")
+    public ResponseEntity<VotacionResponse> proponerse(
+            @PathVariable Long proyectoId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(
+                votacionService.proponerseComoCandidato(proyectoId, userDetails.getUsername())
+        );
+    }
 
     // ═══════════════════════════════════════════════════════════
     // ✅ CORREGIDO: VERIFICAR SI EL USUARIO ACTUAL ES DELEGADO
@@ -96,4 +108,5 @@ public class VotacionController {
 
         return ResponseEntity.ok(Map.of("esDelegado", esDelegado));
     }
+
 }

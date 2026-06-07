@@ -193,4 +193,25 @@ public class MensajeService {
                 m.getRemitente().getId().equals(miId)
         );
     }
+    // ═══════════════════════════════════════════════════════════
+    // ELIMINAR CONVERSACIONES DIRECTAS DE UN PROYECTO
+    // ═══════════════════════════════════════════════════════════
+    @Transactional
+    public void eliminarConversacionesDirectasDeProyecto(Long proyectoId) {
+        // Obtener todas las conversaciones del proyecto
+        List<Conversacion> conversaciones = conversacionRepository.findByProyectoId(proyectoId);
+
+        for (Conversacion conv : conversaciones) {
+            // Eliminar TODOS los mensajes de la conversación directa
+            List<Mensaje> mensajesDirectos = mensajeRepository.findByConversacionId(conv.getId());
+            if (!mensajesDirectos.isEmpty()) {
+                mensajeRepository.deleteAll(mensajesDirectos);
+            }
+        }
+
+        // Eliminar las conversaciones directas
+        if (!conversaciones.isEmpty()) {
+            conversacionRepository.deleteAll(conversaciones);
+        }
+    }
 }

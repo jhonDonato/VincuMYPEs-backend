@@ -23,4 +23,7 @@ public interface ConversacionRepository extends JpaRepository<Conversacion, Long
     @Query("SELECT c FROM Conversacion c WHERE c.proyecto.id = :proyectoId AND c.estudiante.id = :estudianteId")
     Optional<Conversacion> findByProyectoIdAndEstudianteId(@Param("proyectoId") Long proyectoId, @Param("estudianteId") Long estudianteId);
 
+    // Buscar todas las conversaciones de un proyecto (para eliminarlas)
+    @Query("SELECT c FROM Conversacion c WHERE c.proyecto.id = :proyectoId")
+    List<Conversacion> findByProyectoId(@Param("proyectoId") Long proyectoId);
 }
