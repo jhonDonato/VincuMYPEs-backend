@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface CalificacionRepository extends JpaRepository<Calificacion, Long> {
 
@@ -58,6 +59,7 @@ public interface CalificacionRepository extends JpaRepository<Calificacion, Long
     WHERE calif.rol.nombre = 'ROLE_ESTUDIANTE' AND califdo.rol.nombre = 'ROLE_MYPE'
     ORDER BY c.createdAt DESC
 """)
+
     List<Object[]> findEstudianteAMype();
 
     // Promedios segmentados
@@ -69,4 +71,22 @@ public interface CalificacionRepository extends JpaRepository<Calificacion, Long
 
     @Query("SELECT COALESCE(AVG(c.puntuacion), 0.0) FROM Calificacion c")
     Double promedioGeneral();
+
+    // Agregar al CalificacionRepository.java
+    @Query("SELECT c FROM Calificacion c " +
+            "JOIN FETCH c.proyecto p " +
+            "JOIN FETCH p.mype m " +
+            "JOIN FETCH m.usuario " +
+            "JOIN FETCH c.calificador calif " +
+            "JOIN FETCH calif.rol " +
+            "JOIN FETCH c.calificado califdo " +
+            "JOIN FETCH califdo.rol " +
+            "WHERE c.proyecto.id = :proyectoId " +
+            "AND c.calificador.id = :calificadorId " +
+            "AND c.calificado.id = :calificadoId")
+    Optional<Calificacion> findByProyectoIdAndCalificadorIdAndCalificadoId(
+            @Param("proyectoId") Long proyectoId,
+            @Param("calificadorId") Long calificadorId,
+            @Param("calificadoId") Long calificadoId);
 }
+
