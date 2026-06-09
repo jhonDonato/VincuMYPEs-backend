@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface EntregableRepository extends JpaRepository<Entregable, Long> {
@@ -32,4 +33,9 @@ public interface EntregableRepository extends JpaRepository<Entregable, Long> {
     // Buscar todos los entregables de un proyecto (sin detalles de estudiante, solo para contar)
     @Query("SELECT e FROM Entregable e WHERE e.proyecto.id = :proyectoId")
     List<Entregable> findByProyectoId(@Param("proyectoId") Long proyectoId);
+
+    List<Entregable> findByLockedBy(Long userId);
+
+    @Query("SELECT e FROM Entregable e WHERE e.lockedAt IS NOT NULL AND e.lockedAt < :fecha")
+    List<Entregable> findByLockedAtBefore(@Param("fecha") LocalDateTime fecha);
 }

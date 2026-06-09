@@ -26,10 +26,12 @@ public interface PostulacionRepository
     Optional<Postulacion> findByProyectoIdAndEstudianteId(Long proyectoId, Long estudianteId);
 
     @Query("SELECT p FROM Postulacion p " +
-            "JOIN FETCH p.proyecto " +
+            "JOIN FETCH p.proyecto proy " +
+            "JOIN FETCH proy.mype m " +
+            "JOIN FETCH m.usuario " +
             "JOIN FETCH p.estudiante e " +
             "JOIN FETCH e.usuario " +
-            "WHERE p.proyecto.id = :proyectoId")
+            "WHERE proy.id = :proyectoId")
     List<Postulacion> findByProyectoIdWithDetails(@Param("proyectoId") Long proyectoId);
 
     @Query("SELECT p FROM Postulacion p " +

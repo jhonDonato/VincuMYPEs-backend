@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface ProyectoRepository extends JpaRepository<Proyecto, Long> {
@@ -47,4 +48,9 @@ public interface ProyectoRepository extends JpaRepository<Proyecto, Long> {
     // ProyectoRepository.java
     @Query("SELECT p FROM Proyecto p JOIN FETCH p.mype ORDER BY p.fechaCreacion DESC")
     Page<Proyecto> findAllConMype(Pageable pageable);
+
+    @Query("SELECT p FROM Proyecto p WHERE p.estado = :estado AND p.fechaFinBusqueda IS NOT NULL AND p.fechaFinBusqueda < :ahora")
+    List<Proyecto> findByEstadoAndFechaFinBusquedaBefore(
+            @Param("estado") WorkflowEstado estado,
+            @Param("ahora") LocalDateTime ahora);
 }

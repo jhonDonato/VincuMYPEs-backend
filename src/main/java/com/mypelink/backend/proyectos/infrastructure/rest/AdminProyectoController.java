@@ -1,8 +1,11 @@
 package com.mypelink.backend.proyectos.infrastructure.rest;
 
 import com.mypelink.backend.proyectos.application.dto.AbrirVacantesRequest;
+import com.mypelink.backend.proyectos.application.dto.DecidirRequest;
 import com.mypelink.backend.proyectos.application.dto.ProyectoAdminResponse;
+import com.mypelink.backend.proyectos.application.service.AdminDecisionService;
 import com.mypelink.backend.proyectos.application.service.ProyectoService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -23,6 +26,7 @@ import java.util.List;
 public class AdminProyectoController {
 
     private final ProyectoService proyectoService;
+    private final AdminDecisionService adminDecisionService;
 
     @GetMapping
     public ResponseEntity<Page<ProyectoAdminResponse>> listarProyectosParaAdmin(
@@ -68,5 +72,13 @@ public class AdminProyectoController {
             @AuthenticationPrincipal UserDetails userDetails) {
         proyectoService.abrirVacantes(id, request.estudianteIds(), userDetails.getUsername());
         return ResponseEntity.noContent().build();
+    }
+    @PostMapping("/{id}/decidir")
+    public ResponseEntity<Void> decidir(
+            @PathVariable Long id,
+            @Valid @RequestBody DecidirRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        adminDecisionService.decidir(id, request, userDetails.getUsername());
+        return ResponseEntity.ok().build();
     }
 }

@@ -53,6 +53,13 @@ public class Entregable {
     @Column(columnDefinition = "TEXT")
     private String observaciones;
 
+    // ── BLOQUEO PARA EDICIÓN EXCLUSIVA ──────────────────────────
+    @Column(name = "locked_by")
+    private Long lockedBy;
+
+    @Column(name = "locked_at")
+    private LocalDateTime lockedAt;
+
     @PrePersist
     protected void onCreate() {
         this.fechaEntrega = LocalDateTime.now();

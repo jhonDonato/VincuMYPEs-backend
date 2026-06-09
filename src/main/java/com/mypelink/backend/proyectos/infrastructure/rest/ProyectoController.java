@@ -152,14 +152,6 @@ public class ProyectoController {
                 postulacionId, confirmar, userDetails.getUsername()));
     }
 
-    @PatchMapping("/{id}/completar")
-    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
-    public ResponseEntity<ProyectoResponse> completarProyecto(
-            @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(proyectoService.completarProyecto(id, userDetails.getUsername()));
-    }
-
     @PostMapping(value = "/{id}/insumos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
     public ResponseEntity<List<InsumoProyectoResponse>> subirInsumos(

@@ -22,6 +22,7 @@ public record PostulacionResponse(
         LocalDateTime proyectoFechaInicioReal,
         String proyectoArea,
         LocalDateTime proyectoFechaFin,
-        java.util.List<String> integrantes
+        java.util.List<String> integrantes,
+        String mypeNombre
 
 ) {}

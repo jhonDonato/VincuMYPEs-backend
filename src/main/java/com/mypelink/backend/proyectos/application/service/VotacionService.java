@@ -1,5 +1,7 @@
 package com.mypelink.backend.proyectos.application.service;
 
+import com.itextpdf.text.log.Logger;
+import com.itextpdf.text.log.LoggerFactory;
 import com.mypelink.backend.notificaciones.application.service.NotificacionService;
 import com.mypelink.backend.proyectos.application.dto.VotacionResponse;
 import com.mypelink.backend.proyectos.application.dto.VotarRequest;
@@ -8,6 +10,7 @@ import com.mypelink.backend.proyectos.domain.repository.*;
 import com.mypelink.backend.shared.domain.enums.FaseVotacion;
 import com.mypelink.backend.shared.domain.enums.EstadoPostulacion;
 import com.mypelink.backend.shared.domain.enums.TipoNotificacion;
+import com.mypelink.backend.shared.domain.enums.WorkflowEstado;
 import com.mypelink.backend.shared.infrastructure.exception.BusinessException;
 import com.mypelink.backend.shared.infrastructure.exception.ResourceNotFoundException;
 import com.mypelink.backend.usuarios.domain.model.Estudiante;
@@ -23,10 +26,18 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import com.mypelink.backend.auth.recovery.application.service.EmailService;
+import com.mypelink.backend.comunicacion.application.service.ChatGrupalService;
+import com.mypelink.backend.usuarios.domain.repository.UsuarioRepository;
+import com.mypelink.backend.usuarios.domain.model.Usuario;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
+
 @RequiredArgsConstructor
 public class VotacionService {
+    private static final Logger log = LoggerFactory.getLogger(VotacionService.class);
 
     private final VotacionDelegadoRepository votacionRepository;
     private final VotoDelegadoRepository votoRepository;
@@ -35,6 +46,8 @@ public class VotacionService {
     private final EstudianteRepository estudianteRepository;
     private final UsuarioRepository usuarioRepository;
     private final NotificacionService notificacionService;
+    private final EmailService emailService;
+    private final ChatGrupalService chatGrupalService;
 
     private static final int HORAS_VOTACION = 48;
 
@@ -249,22 +262,18 @@ public class VotacionService {
             }
         }
 
-        // ✅ LÓGICA DE EMPATE
+        // ✅ LÓGICA DE EMPATE (sin cambios)
         if (empate) {
             final long maxVotosFinal = maxVotos;
-
             List<Long> empatados = conteo.entrySet().stream()
                     .filter(e -> e.getValue() == maxVotosFinal)
                     .map(Map.Entry::getKey)
                     .toList();
 
             int totalCandidatos = conteo.size();
-
             if (totalCandidatos == 2 || empatados.size() == 2) {
-                // 🎲 2 personas → Azar
                 ganadorId = empatados.get(new Random().nextInt(empatados.size()));
             } else {
-                // 🔄 3+ personas → Reiniciar votación
                 return reiniciarVotacion(votacion, empatados, nombres);
             }
         }
@@ -284,7 +293,6 @@ public class VotacionService {
         Postulacion postulacionGanadora = postulacionRepository
                 .findByProyectoIdAndEstudianteId(proyecto.getId(), ganadorId)
                 .orElseThrow(() -> new BusinessException("Error al encontrar al ganador"));
-
         postulacionGanadora.setEsDelegado(true);
         postulacionRepository.save(postulacionGanadora);
 
@@ -294,9 +302,78 @@ public class VotacionService {
         votacionRepository.save(votacion);
 
         proyecto.setFaseVotacion(FaseVotacion.COMPLETADA);
-        proyectoRepository.save(proyecto);
+        // ─────────────────────────────────────────────────────────────
+        // ✅ NUEVO: Detección de inactividad y cambio de estado
+        // ─────────────────────────────────────────────────────────────
+        List<Postulacion> confirmados = postulacionRepository
+                .findByProyectoIdAndEstadoWithDetails(proyecto.getId(), EstadoPostulacion.CONFIRMADO);
 
-        // Notificaciones
+        Set<Long> idsQueVotaron = votos.stream()
+                .map(v -> v.getVotante().getId())
+                .collect(Collectors.toSet());
+
+        List<Postulacion> noVotaron = confirmados.stream()
+                .filter(p -> !idsQueVotaron.contains(p.getEstudiante().getId()))
+                .toList();
+
+        if (!noVotaron.isEmpty()) {
+            // Hay inactividad: el proyecto pasa a revisión del admin
+            proyecto.setEstado(WorkflowEstado.PENDIENTE_ADMIN);
+            proyectoRepository.save(proyecto);
+
+            // Notificar a todos los administradores
+            List<Usuario> admins = usuarioRepository.findAll().stream()
+                    .filter(u -> u.getRol().getNombre().equals("ROLE_ADMIN"))
+                    .toList();
+            String nombresNoVotaron = noVotaron.stream()
+                    .map(p -> p.getEstudiante().getUsuario().getNombre())
+                    .collect(Collectors.joining(", "));
+
+            for (Usuario admin : admins) {
+                notificacionService.crearNotificacion(
+                        admin,
+                        "⚠️ Proyecto requiere atención",
+                        "El proyecto \"" + proyecto.getTitulo() + "\" tiene estudiantes que no votaron: "
+                                + nombresNoVotaron + ". Debes decidir cómo continuar.",
+                        TipoNotificacion.PROYECTO,
+                        "/admin/proyectos"
+                );
+                try {
+                    emailService.enviarCorreoNotificacion(
+                            admin.getEmail(),
+                            "Proyecto en revisión: " + proyecto.getTitulo(),
+                            "Los siguientes estudiantes no participaron en la votación del delegado: "
+                                    + nombresNoVotaron + ". Ingresa al panel de administración para decidir.",
+                            admin.getNombre()
+                    );
+                } catch (Exception e) {
+                    log.error("Error enviando correo a admin " + admin.getEmail() + ": " + e.getMessage(), e);
+                }
+            }
+
+            // Notificar a los estudiantes que el proyecto está en revisión
+            for (Postulacion p : confirmados) {
+                notificacionService.crearNotificacion(
+                        p.getEstudiante().getUsuario(),
+                        "⏳ Proyecto en revisión",
+                        "El proyecto \"" + proyecto.getTitulo() + "\" está pendiente de revisión por el administrador.",
+                        TipoNotificacion.PROYECTO,
+                        "/workspace/" + proyecto.getId()
+                );
+            }
+        } else {
+            // Todos votaron: el proyecto puede comenzar
+            proyecto.setEstado(WorkflowEstado.EN_DESARROLLO);
+            proyectoRepository.save(proyecto);
+            try {
+                chatGrupalService.crearChatsParaProyecto(proyecto.getId());
+            } catch (Exception e) {
+                log.error("Error al crear chats para proyecto " + proyecto.getId() + ": " + e.getMessage(), e);
+            }
+        }
+        // ─────────────────────────────────────────────────────────────
+
+        // Notificaciones al delegado
         notificacionService.crearNotificacion(
                 postulacionGanadora.getEstudiante().getUsuario(),
                 "🎉 ¡Eres el delegado del equipo!",
@@ -305,27 +382,26 @@ public class VotacionService {
                 "/workspace/" + proyecto.getId()
         );
 
-        List<Postulacion> confirmados = postulacionRepository
-                .findByProyectoIdAndEstadoWithDetails(proyecto.getId(), EstadoPostulacion.CONFIRMADO);
-
+        // Notificaciones al resto del equipo
         for (Postulacion p : confirmados) {
             if (!p.getEstudiante().getId().equals(ganadorId)) {
                 notificacionService.crearNotificacion(
                         p.getEstudiante().getUsuario(),
                         "✅ Delegado elegido",
-                        postulacionGanadora.getEstudiante().getUsuario().getNombre() +
-                                " es el delegado de \"" + proyecto.getTitulo() + "\".",
+                        postulacionGanadora.getEstudiante().getUsuario().getNombre()
+                                + " es el delegado de \"" + proyecto.getTitulo() + "\".",
                         TipoNotificacion.PROYECTO,
                         "/workspace/" + proyecto.getId()
                 );
             }
         }
 
+        // Notificar a la MYPE
         notificacionService.crearNotificacion(
                 proyecto.getMype().getUsuario(),
                 "✅ Delegado elegido",
-                postulacionGanadora.getEstudiante().getUsuario().getNombre() +
-                        " es el delegado de \"" + proyecto.getTitulo() + "\".",
+                postulacionGanadora.getEstudiante().getUsuario().getNombre()
+                        + " es el delegado de \"" + proyecto.getTitulo() + "\".",
                 TipoNotificacion.PROYECTO,
                 "/dashboard/mype/ejecucion"
         );
@@ -411,7 +487,14 @@ public class VotacionService {
         votacion = votacionRepository.save(votacion);
 
         proyecto.setFaseVotacion(FaseVotacion.COMPLETADA);
+        proyecto.setEstado(WorkflowEstado.EN_DESARROLLO);
         proyectoRepository.save(proyecto);
+
+        try {
+            chatGrupalService.crearChatsParaProyecto(proyecto.getId());
+        } catch (Exception e) {
+            log.error("Error al crear chats para proyecto " + proyecto.getId() + ": " + e.getMessage(), e);
+        }
 
         notificacionService.crearNotificacion(
                 ganador.getEstudiante().getUsuario(),

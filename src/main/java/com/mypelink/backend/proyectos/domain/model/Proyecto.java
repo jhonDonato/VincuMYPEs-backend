@@ -111,5 +111,11 @@ public class Proyecto {
 
     @Column(name = "fecha_inicio_real")
     private LocalDateTime fechaInicioReal;
+
+    @Column(name = "fecha_fin_busqueda")
+    private LocalDateTime fechaFinBusqueda;
+
+    @Column(name = "fecha_ampliada")
+    private LocalDate fechaAmpliada;
 }
 

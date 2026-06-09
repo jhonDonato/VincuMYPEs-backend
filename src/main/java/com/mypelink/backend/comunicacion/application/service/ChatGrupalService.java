@@ -15,13 +15,16 @@ import com.mypelink.backend.usuarios.domain.model.Estudiante;
 import com.mypelink.backend.usuarios.domain.model.Usuario;
 import com.mypelink.backend.usuarios.domain.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;    // ← añadido
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ChatGrupalService {
@@ -32,7 +35,6 @@ public class ChatGrupalService {
     private final ProyectoRepository proyectoRepository;
     private final PostulacionRepository postulacionRepository;
     private final UsuarioRepository usuarioRepository;
-    // ✅ Para el chat directo de proyectos de 1 solo estudiante
     private final ConversacionRepository conversacionRepository;
 
 
@@ -91,6 +93,41 @@ public class ChatGrupalService {
                 .chatGrupo(chatProyecto)
                 .usuario(proyecto.getMype().getUsuario())
                 .build());
+    }
+    @Transactional
+    public void asegurarMiembrosEnChats(Long proyectoId) {
+        log.info("🔍 asegurarMiembrosEnChats: proyectoId={}", proyectoId);
+        List<ChatGrupo> chats = chatGrupoRepository.findByProyectoId(proyectoId);
+        log.info("   Chats encontrados: {}", chats.size());
+
+        if (chats.isEmpty()) {
+            log.info("   No hay chats, creando desde cero...");
+            crearChatsParaProyecto(proyectoId);
+            return;
+        }
+
+        List<Postulacion> confirmados = postulacionRepository
+                .findByProyectoIdAndEstadoWithDetails(proyectoId, EstadoPostulacion.CONFIRMADO);
+        log.info("   Confirmados: {} estudiantes", confirmados.size());
+
+        for (ChatGrupo chat : chats) {
+            Set<Long> miembrosActuales = miembroChatGrupoRepository
+                    .findByChatGrupoIdWithUsuario(chat.getId())
+                    .stream()
+                    .map(m -> m.getUsuario().getId())
+                    .collect(Collectors.toSet());
+            log.info("   Chat '{}' (id={}) tiene {} miembros", chat.getNombre(), chat.getId(), miembrosActuales.size());
+
+            for (Postulacion p : confirmados) {
+                if (!miembrosActuales.contains(p.getEstudiante().getUsuario().getId())) {
+                    log.info("      ➕ Agregando a estudiante userId={} al chat {}", p.getEstudiante().getUsuario().getId(), chat.getId());
+                    miembroChatGrupoRepository.save(MiembroChatGrupo.builder()
+                            .chatGrupo(chat)
+                            .usuario(p.getEstudiante().getUsuario())
+                            .build());
+                }
+            }
+        }
     }
     // ═══════════════════════════════════════════════════════════
     // ELIMINAR CHATS GRUPALES DE UN PROYECTO (EQUIPO + PROYECTO)

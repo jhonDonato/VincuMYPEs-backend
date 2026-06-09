@@ -1,10 +1,19 @@
 package com.mypelink.backend.proyectos.infrastructure.scheduler;
 
+import com.mypelink.backend.auth.recovery.application.service.EmailService;
+import com.mypelink.backend.ejecucion.domain.model.Entregable;
+import com.mypelink.backend.ejecucion.domain.repository.EntregableRepository;
 import com.mypelink.backend.notificaciones.application.service.NotificacionService;
+import com.mypelink.backend.proyectos.application.service.ProyectoService;
 import com.mypelink.backend.proyectos.domain.model.Postulacion;
+import com.mypelink.backend.proyectos.domain.model.Proyecto;
 import com.mypelink.backend.proyectos.domain.repository.PostulacionRepository;
+import com.mypelink.backend.proyectos.domain.repository.ProyectoRepository;
 import com.mypelink.backend.shared.domain.enums.EstadoPostulacion;
 import com.mypelink.backend.shared.domain.enums.TipoNotificacion;
+import com.mypelink.backend.shared.domain.enums.WorkflowEstado;
+import com.mypelink.backend.usuarios.domain.model.Usuario;
+import com.mypelink.backend.usuarios.domain.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -16,20 +25,24 @@ import java.util.List;
 
 @Component
 @RequiredArgsConstructor
-@Slf4j  // Lombok genera un logger: log.info(), log.warn(), etc.
+@Slf4j
 public class AceptacionScheduler {
 
     private final PostulacionRepository postulacionRepository;
     private final NotificacionService notificacionService;
+    private final ProyectoService proyectoService;
+    private final ProyectoRepository proyectoRepository;
+    private final UsuarioRepository usuarioRepository;
+    private final EntregableRepository entregableRepository;
+    private final EmailService emailService;
 
-    @Scheduled(fixedDelay = 15 * 60 * 1000) // cada 15 minutos en milisegundos
+    @Scheduled(fixedDelay = 15 * 60 * 1000)
     @Transactional
     public void procesarPostulacionesExpiradas() {
         LocalDateTime ahora = LocalDateTime.now();
         log.info("[AceptacionScheduler] Ejecutando revisión de postulaciones expiradas: {}", ahora);
 
         // ── Caso 1: MYPE no respondió en 12h ─────────────────────
-        // El admin preseleccionó a un estudiante, pero la MYPE no validó ni rechazó.
         List<Postulacion> expiradasMype = postulacionRepository
                 .findExpiradasEnEstado(EstadoPostulacion.PRESELECCIONADO, ahora);
 
@@ -40,7 +53,6 @@ public class AceptacionScheduler {
             p.setFechaLimiteConfirmacion(null);
             postulacionRepository.save(p);
 
-            // Notificar a la MYPE (debería haber respondido)
             notificacionService.crearNotificacion(
                     p.getProyecto().getMype().getUsuario(),
                     "Plazo vencido — selección liberada",
@@ -51,7 +63,6 @@ public class AceptacionScheduler {
                     "/dashboard/postulaciones/" + p.getProyecto().getId()
             );
 
-            // Notificar al estudiante que quedó libre
             notificacionService.crearNotificacion(
                     p.getEstudiante().getUsuario(),
                     "Tu preselección expiró",
@@ -64,7 +75,6 @@ public class AceptacionScheduler {
         }
 
         // ── Caso 2: Estudiante no respondió en 12h ────────────────
-        // La MYPE validó la selección, pero el estudiante no confirmó ni rechazó.
         List<Postulacion> expiradasEstudiante = postulacionRepository
                 .findExpiradasEnEstado(EstadoPostulacion.VALIDADO_MYPE, ahora);
 
@@ -75,7 +85,6 @@ public class AceptacionScheduler {
             p.setFechaLimiteConfirmacion(null);
             postulacionRepository.save(p);
 
-            // Notificar a la MYPE para que el admin reinicie la selección
             notificacionService.crearNotificacion(
                     p.getProyecto().getMype().getUsuario(),
                     "El estudiante no confirmó a tiempo",
@@ -87,7 +96,6 @@ public class AceptacionScheduler {
                     "/dashboard/postulaciones/" + p.getProyecto().getId()
             );
 
-            // Notificar al estudiante
             notificacionService.crearNotificacion(
                     p.getEstudiante().getUsuario(),
                     "Tu oferta expiró",
@@ -101,5 +109,57 @@ public class AceptacionScheduler {
 
         log.info("[AceptacionScheduler] Fin: {} MYPE expiradas, {} estudiante expiradas",
                 expiradasMype.size(), expiradasEstudiante.size());
+    }
+
+    @Scheduled(fixedDelay = 15 * 60 * 1000)
+    @Transactional
+    public void procesarVacantesExpiradas() {
+        LocalDateTime ahora = LocalDateTime.now();
+        List<Proyecto> vacantesExpiradas = proyectoRepository
+                .findByEstadoAndFechaFinBusquedaBefore(WorkflowEstado.VACANTES_ABIERTAS, ahora);
+
+        for (Proyecto proyecto : vacantesExpiradas) {
+            proyecto.setEstado(WorkflowEstado.PENDIENTE_ADMIN);
+            proyecto.setFechaFinBusqueda(null);
+            proyectoRepository.save(proyecto);
+
+            List<Usuario> admins = usuarioRepository.findAll().stream()
+                    .filter(u -> u.getRol().getNombre().equals("ROLE_ADMIN"))
+                    .toList();
+
+            for (Usuario admin : admins) {
+                notificacionService.crearNotificacion(
+                        admin,
+                        "⏰ Plazo de búsqueda vencido",
+                        "El proyecto \"" + proyecto.getTitulo() + "\" no ha encontrado reemplazos. Debes decidir cómo continuar.",
+                        TipoNotificacion.PROYECTO,
+                        "/admin/proyectos"
+                );
+                try {
+                    emailService.enviarCorreoNotificacion(
+                            admin.getEmail(),
+                            "Plazo de búsqueda de vacantes vencido",
+                            "El proyecto \"" + proyecto.getTitulo() + "\" no encontró reemplazos en el plazo de 3 días. "
+                                    + "Debes ingresar al panel de administración para decidir cómo continuar.\n\n"
+                                    + "Inicia sesión: http://localhost:5173/login",
+                            admin.getNombre()
+                    );
+                } catch (Exception e) {
+                    log.error("Error al enviar email a admin sobre vacantes vencidas: {}", e.getMessage());
+                }
+            }
+        }
+    }
+    @Scheduled(fixedDelay = 300000) // cada 5 minutos
+    @Transactional
+    public void liberarBloqueosExpirados() {
+        List<Entregable> expirados = entregableRepository.findByLockedAtBefore(LocalDateTime.now().minusHours(1));
+        for (Entregable e : expirados) {
+            log.warn("[AceptacionScheduler] Liberando bloqueo expirado en entregable id={}, proyecto={}",
+                    e.getId(), e.getProyecto() != null ? e.getProyecto().getId() : "null");
+            e.setLockedBy(null);
+            e.setLockedAt(null);
+        }
+        entregableRepository.saveAll(expirados);
     }
 }

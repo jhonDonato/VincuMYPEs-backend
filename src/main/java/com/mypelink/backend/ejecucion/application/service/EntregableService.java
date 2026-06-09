@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -71,15 +72,6 @@ public class EntregableService {
             throw new BusinessException("Solo estudiantes confirmados pueden subir entregables");
         }
 
-        // Validar que sea el delegado
-        if (postulacion.getEsDelegado() == null || !postulacion.getEsDelegado()) {
-            throw new BusinessException(
-                    "Solo el delegado del equipo puede subir entregables. " +
-                            "El delegado es elegido por votación del equipo.",
-                    HttpStatus.FORBIDDEN
-            );
-        }
-
         String archivoUrl = s3Service.subirEntregablePdf(archivo);
 
         // ✅ Guardar con subidoPor
@@ -96,7 +88,7 @@ public class EntregableService {
             String mypeNombre = proyecto.getMype().getUsuario().getNombre();
             String emailTitulo = "Nuevo entregable subido en tu proyecto";
             String mensaje = String.format(
-                    "El estudiante %s (delegado) ha subido el entregable \"%s\" para el proyecto \"%s\". Revisa el entregable en la sección de evaluación.",
+                    "El estudiante %s ha subido el entregable \"%s\" para el proyecto \"%s\". Revisa el entregable en la sección de evaluación.",
                     estudiante.getUsuario().getNombre(),
                     titulo,
                     proyecto.getTitulo()
@@ -108,10 +100,10 @@ public class EntregableService {
         notificacionService.crearNotificacion(
                 proyecto.getMype().getUsuario(),
                 "Nuevo entregable recibido",
-                "El estudiante " + usuario.getNombre() + " subió un entregable para: "
-                        + proyecto.getTitulo(),
+                "El estudiante " + usuario.getNombre() + " subió un entregable para: " + proyecto.getTitulo(),
                 TipoNotificacion.PROYECTO,
-                "/dashboard/proyectos/" + proyectoId + "/entregables");
+                "/dashboard/proyectos/" + proyectoId + "/entregables"
+        );
 
         return toResponse(entregable);
     }
@@ -220,13 +212,39 @@ public class EntregableService {
                         + request.estado().name(),
                 TipoNotificacion.PROYECTO,
                 "/mis-entregables");
+        try {
+            emailService.enviarCorreoNotificacion(
+                    entregable.getEstudiante().getUsuario().getEmail(),
+                    "Tu entregable fue revisado",
+                    "Tu entregable \"" + entregable.getTitulo() + "\" del proyecto \""
+                            + entregable.getProyecto().getTitulo() + "\" fue marcado como "
+                            + request.estado().name()
+                            + (request.observaciones() != null && !request.observaciones().isBlank()
+                                ? ". Observaciones: " + request.observaciones() : "")
+                            + ".\n\nInicia sesión para ver el detalle: http://localhost:5173/login",
+                    entregable.getEstudiante().getUsuario().getNombre()
+            );
+        } catch (Exception e) {
+            log.error("Error al enviar email al estudiante sobre revisión de entregable: {}", e.getMessage());
+        }
 
         if (request.estado() == EstadoEntregable.APROBADO
                 && proyecto.getEstado() != WorkflowEstado.COMPLETADO) {
+            List<String> sugeridos = obtenerEntregablesSugeridos(proyecto);
             List<Entregable> todosEntregables = entregableRepository.findByProyectoId(proyectoId);
-            boolean todosAprobados = !todosEntregables.isEmpty()
-                    && todosEntregables.stream().allMatch(e -> e.getEstado() == EstadoEntregable.APROBADO);
-            if (todosAprobados) {
+
+            boolean todosListos = false;
+            if (!sugeridos.isEmpty()) {
+                Set<String> titulosSubidos = todosEntregables.stream()
+                        .map(Entregable::getTitulo)
+                        .collect(Collectors.toSet());
+                boolean todosSubidos = sugeridos.stream().allMatch(titulosSubidos::contains);
+                boolean todosAprobados = todosEntregables.stream()
+                        .allMatch(e -> e.getEstado() == EstadoEntregable.APROBADO);
+                todosListos = todosSubidos && todosAprobados;
+            }
+
+            if (todosListos) {
                 try {
                     proyectoService.completarProyecto(proyectoId, emailMype);
                     log.info("Proyecto {} completado automáticamente al aprobar el último entregable", proyectoId);
@@ -435,5 +453,53 @@ public class EntregableService {
                     .forEach(e -> resultado.add(toResponse(e)));
         }
         return resultado;
+    }
+    // ═══════════════════════════════════════════════════════════════
+// BLOQUEO DE ENTREGABLES (edición exclusiva)
+// ═══════════════════════════════════════════════════════════════
+
+    @Transactional
+    public void adquirirBloqueo(Long entregableId, Usuario usuario) {
+        Entregable e = entregableRepository.findById(entregableId)
+                .orElseThrow(() -> new ResourceNotFoundException("Entregable no encontrado"));
+
+        // Si ya está bloqueado por otro usuario y no ha expirado (1 hora)
+        if (e.getLockedBy() != null && !e.getLockedBy().equals(usuario.getId())) {
+            if (e.getLockedAt().plusHours(1).isAfter(LocalDateTime.now())) {
+                Usuario bloqueador = usuarioRepository.findById(e.getLockedBy()).orElse(null);
+                String nombre = bloqueador != null ? bloqueador.getNombre() : "Otro usuario";
+                throw new BusinessException(
+                        "Este entregable está siendo editado por " + nombre,
+                        HttpStatus.CONFLICT
+                );
+            }
+        }
+
+        // Asignar bloqueo
+        e.setLockedBy(usuario.getId());
+        e.setLockedAt(LocalDateTime.now());
+        entregableRepository.save(e);
+    }
+
+    @Transactional
+    public void liberarBloqueo(Long entregableId, Usuario usuario) {
+        Entregable e = entregableRepository.findById(entregableId)
+                .orElseThrow(() -> new ResourceNotFoundException("Entregable no encontrado"));
+
+        if (usuario.getId().equals(e.getLockedBy())) {
+            e.setLockedBy(null);
+            e.setLockedAt(null);
+            entregableRepository.save(e);
+        }
+    }
+
+    @Transactional
+    public void liberarTodosDeUsuario(Long userId) {
+        List<Entregable> bloqueados = entregableRepository.findByLockedBy(userId);
+        for (Entregable e : bloqueados) {
+            e.setLockedBy(null);
+            e.setLockedAt(null);
+        }
+        entregableRepository.saveAll(bloqueados);
     }
 }

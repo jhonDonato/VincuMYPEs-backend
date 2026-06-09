@@ -24,5 +24,6 @@ public record ProyectoResponse(
         LocalDateTime fechaInicioReal,
         LocalDate fechaLimiteCalculada,
         Long cuposOcupados,
-        Long mypeUsuarioId   // ← NUEVO
+        Long mypeUsuarioId,
+        String mypeDireccion
 ) {}

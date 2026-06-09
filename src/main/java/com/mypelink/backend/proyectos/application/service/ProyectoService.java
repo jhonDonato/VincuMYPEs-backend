@@ -35,6 +35,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
+import java.util.Set;
 import java.util.stream.Collectors;
 import com.mypelink.backend.proyectos.domain.model.TipoProyecto;
 import com.mypelink.backend.proyectos.domain.model.EntregableTipo;
@@ -95,10 +97,20 @@ public class ProyectoService {
         List<ProyectoResponse> lista = proyectoRepository
                 .findPublicosConMype(WorkflowEstado.PENDIENTE)
                 .stream().map(this::toResponse).toList();
+
+        // Añadir también los proyectos en búsqueda de vacantes
+        List<ProyectoResponse> vacantes = proyectoRepository
+                .findPublicosConMype(WorkflowEstado.VACANTES_ABIERTAS)
+                .stream().map(this::toResponse).toList();
+
+        List<ProyectoResponse> todas = new ArrayList<>();
+        todas.addAll(lista);
+        todas.addAll(vacantes);
+
         int start = (int) pageable.getOffset();
-        int end = Math.min(start + pageable.getPageSize(), lista.size());
+        int end = Math.min(start + pageable.getPageSize(), todas.size());
         return new org.springframework.data.domain.PageImpl<>(
-                lista.subList(start, end), pageable, lista.size());
+                todas.subList(start, end), pageable, todas.size());
     }
 
     public ProyectoResponse obtenerPorId(Long id) {
@@ -152,7 +164,8 @@ public class ProyectoService {
         var proyecto = proyectoRepository.findById(proyectoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
 
-        if (proyecto.getEstado() != WorkflowEstado.PENDIENTE) {
+        if (proyecto.getEstado() != WorkflowEstado.PENDIENTE &&
+                proyecto.getEstado() != WorkflowEstado.VACANTES_ABIERTAS) {
             throw new BusinessException("El proyecto no está disponible para postulaciones");
         }
         List<EstadoPostulacion> estadosActivos = List.of(
@@ -275,6 +288,17 @@ public class ProyectoService {
                 "El administrador canceló tu proyecto \"" + proyecto.getTitulo() + "\".",
                 proyecto.getMype().getUsuario().getNombre()
         );
+
+        try {
+            chatGrupalService.eliminarChatsGrupalesDeProyecto(proyectoId);
+        } catch (Exception e) {
+            log.error("Error al eliminar chats grupales del proyecto cancelado {}: {}", proyectoId, e.getMessage());
+        }
+        try {
+            mensajeService.eliminarConversacionesDirectasDeProyecto(proyectoId);
+        } catch (Exception e) {
+            log.error("Error al eliminar conversaciones directas del proyecto cancelado {}: {}", proyectoId, e.getMessage());
+        }
     }
 
     @Transactional
@@ -382,6 +406,8 @@ public class ProyectoService {
                     p.getEstudiante().getUsuario().getNombre()
             );
         }
+        // Reasignar delegado si el actual fue expulsado
+        reasignarDelegadoSiEsNecesario(proyecto);
 
         // Verificar cuántos confirmados quedan
         long confirmadosRestantes = postulacionRepository.countByProyectoIdAndEstado(proyectoId, EstadoPostulacion.CONFIRMADO);
@@ -692,6 +718,20 @@ public class ProyectoService {
                     TipoNotificacion.POSTULACION,
                     "/mis-postulaciones"
             );
+            try {
+                emailService.enviarCorreoNotificacion(
+                        postulacion.getEstudiante().getUsuario().getEmail(),
+                        "¡Fuiste aceptado en un proyecto!",
+                        "La empresa \"" + proyecto.getMype().getNombreComercial()
+                                + "\" aceptó tu postulación al proyecto \""
+                                + proyecto.getTitulo() + "\". Tienes " + HORAS_PLAZO
+                                + " horas para confirmar o rechazar tu participación.\n\n"
+                                + "Inicia sesión para responder: http://localhost:5173/login",
+                        postulacion.getEstudiante().getUsuario().getNombre()
+                );
+            } catch (Exception e) {
+                log.error("Error al enviar email al estudiante sobre oferta aceptada: {}", e.getMessage());
+            }
             return toPostulacionResponse(postulacion);
         }
 
@@ -767,8 +807,6 @@ public class ProyectoService {
             postulacion.setFechaLimiteConfirmacion(null);
             postulacion.setFechaRespuesta(LocalDateTime.now());
             postulacionRepository.save(postulacion);
-            // Autocancelar otras postulaciones del estudiante en estado VALIDADO_MYPE
-            // (excluyendo el proyecto actual)
             long activosTrasConfirmar = contarProyectosActivosDelEstudiante(estudiante.getId());
             int limite = estudiante.getLimiteProyectos();
             if (activosTrasConfirmar >= limite) {
@@ -802,21 +840,23 @@ public class ProyectoService {
                     .filter(p -> p.getEstado() == EstadoPostulacion.CONFIRMADO)
                     .count();
 
+
             if (confirmadosActualizados >= proyecto.getCupos()) {
                 WorkflowEstado estadoAnterior = proyecto.getEstado();
                 proyecto.setFechaInicioReal(LocalDateTime.now());
-                proyecto.setEstado(WorkflowEstado.EN_DESARROLLO);
+
+                boolean esIndividual = proyecto.getCupos() != null && proyecto.getCupos() == 1;
+                WorkflowEstado nuevoEstado = esIndividual ? WorkflowEstado.EN_DESARROLLO : WorkflowEstado.EN_VOTACION_DELEGADO;
+                proyecto.setEstado(nuevoEstado);
                 proyectoRepository.save(proyecto);
 
                 workflowHistorialRepository.save(WorkflowHistorial.builder()
                         .proyecto(proyecto).cambiadoPor(usuario)
-                        .estadoAnterior(estadoAnterior).estadoNuevo(WorkflowEstado.EN_DESARROLLO)
+                        .estadoAnterior(estadoAnterior).estadoNuevo(nuevoEstado)
                         .comentario("Cupos cubiertos. Estudiante " + usuario.getNombre() + " confirmó.")
                         .build());
-                // ═══════════════════════════════════════════
-                // ✅ Delegado: individual = auto-delegado; grupal = votación
-                // ═══════════════════════════════════════════
-                if (proyecto.getCupos() != null && proyecto.getCupos() == 1) {
+
+                if (esIndividual) {
                     // Proyecto individual: el único confirmado es delegado automáticamente
                     postulacionRepository
                             .findByProyectoIdAndEstadoWithDetails(proyecto.getId(), EstadoPostulacion.CONFIRMADO)
@@ -831,14 +871,6 @@ public class ProyectoService {
                     } catch (Exception e) {
                         System.err.println("Error al iniciar votación: " + e.getMessage());
                     }
-                }
-
-
-                // ✅ Crear chats grupales
-                try {
-                    chatGrupalService.crearChatsParaProyecto(proyecto.getId());
-                } catch (Exception e) {
-                    System.err.println("Error al crear chats: " + e.getMessage());
                 }
 
                 List<EstadoPostulacion> estadosActivos = List.of(
@@ -866,6 +898,7 @@ public class ProyectoService {
                         });
             }
 
+
             notificacionService.crearNotificacion(
                     proyecto.getMype().getUsuario(),
                     "¡Estudiante confirmado!",
@@ -874,6 +907,18 @@ public class ProyectoService {
                     TipoNotificacion.POSTULACION,
                     "/dashboard/postulaciones/" + proyecto.getId()
             );
+            try {
+                emailService.enviarCorreoNotificacion(
+                        proyecto.getMype().getUsuario().getEmail(),
+                        "Estudiante confirmado en tu proyecto",
+                        usuario.getNombre() + " confirmó su participación en el proyecto \""
+                                + proyecto.getTitulo() + "\".\n\n"
+                                + "Inicia sesión para ver el estado del equipo: http://localhost:5173/login",
+                        proyecto.getMype().getUsuario().getNombre()
+                );
+            } catch (Exception e) {
+                log.error("Error al enviar email a la MYPE sobre confirmación de estudiante: {}", e.getMessage());
+            }
 
             notificacionService.crearNotificacion(
                     usuario,
@@ -919,8 +964,8 @@ public class ProyectoService {
             throw new BusinessException("Solo puedes completar proyectos que están en desarrollo");
         }
 
-        // ✅ Validar que todos los entregables del proyecto estén APROBADOS
         List<Entregable> entregables = entregableRepository.findByProyectoIdWithDetails(proyectoId);
+
         if (entregables.isEmpty()) {
             throw new BusinessException("El proyecto no tiene entregables registrados");
         }
@@ -951,15 +996,49 @@ public class ProyectoService {
 
         var guardado = proyectoRepository.save(proyecto);
 
-        // Notificar a estudiantes confirmados (opcional)
+        // Notificar a estudiantes confirmados
         postulacionRepository.findByProyectoIdAndEstadoWithDetails(proyectoId, EstadoPostulacion.CONFIRMADO)
-                .forEach(p -> notificacionService.crearNotificacion(
-                        p.getEstudiante().getUsuario(),
-                        "Proyecto completado",
-                        "El proyecto \"" + proyecto.getTitulo() + "\" ha sido marcado como completado.",
-                        TipoNotificacion.PROYECTO,
-                        "/certificados"
-                ));
+                .forEach(p -> {
+                    notificacionService.crearNotificacion(
+                            p.getEstudiante().getUsuario(),
+                            "Proyecto completado",
+                            "El proyecto \"" + proyecto.getTitulo() + "\" ha finalizado exitosamente. Tu certificado digital ha sido emitido.",
+                            TipoNotificacion.PROYECTO,
+                            "/certificados"
+                    );
+                    try {
+                        emailService.enviarCorreoNotificacion(
+                                p.getEstudiante().getUsuario().getEmail(),
+                                "¡Proyecto completado! Tu certificado está disponible",
+                                "El proyecto \"" + proyecto.getTitulo() + "\" ha finalizado exitosamente. "
+                                        + "Tu certificado digital ha sido emitido y está disponible en la plataforma.\n\n"
+                                        + "Inicia sesión para verlo: http://localhost:5173/login",
+                                p.getEstudiante().getUsuario().getNombre()
+                        );
+                    } catch (Exception e) {
+                        log.error("Error al enviar email a estudiante sobre proyecto completado: {}", e.getMessage());
+                    }
+                });
+        // Notificar a la MYPE
+        notificacionService.crearNotificacion(
+                proyecto.getMype().getUsuario(),
+                "Proyecto completado",
+                "El proyecto \"" + proyecto.getTitulo() + "\" ha sido completado. Los certificados de los estudiantes han sido emitidos.",
+                TipoNotificacion.PROYECTO,
+                "/dashboard/mype/certificados"
+        );
+        try {
+            emailService.enviarCorreoNotificacion(
+                    proyecto.getMype().getUsuario().getEmail(),
+                    "Proyecto completado",
+                    "El proyecto \"" + proyecto.getTitulo() + "\" ha sido completado exitosamente. "
+                            + "Los certificados digitales de los estudiantes participantes han sido emitidos.\n\n"
+                            + "Inicia sesión para ver el detalle: http://localhost:5173/login",
+                    proyecto.getMype().getUsuario().getNombre()
+            );
+        } catch (Exception e) {
+            log.error("Error al enviar email a la MYPE sobre proyecto completado: {}", e.getMessage());
+        }
         return toResponse(guardado);
     }
 
@@ -1004,6 +1083,79 @@ public class ProyectoService {
     }
 
     @Transactional
+    public void reasignarDelegadoSiEsNecesario(Proyecto proyecto) {
+        List<Postulacion> confirmados = postulacionRepository
+                .findByProyectoIdAndEstadoWithDetails(proyecto.getId(), EstadoPostulacion.CONFIRMADO);
+
+        // ¿Hay un delegado actual?
+        Postulacion delegadoActual = confirmados.stream()
+                .filter(p -> Boolean.TRUE.equals(p.getEsDelegado()))
+                .findFirst()
+                .orElse(null);
+
+        // Si no hay delegado o el delegado ya no está confirmado, elegir uno al azar
+        if (delegadoActual == null || !confirmados.contains(delegadoActual)) {
+            if (!confirmados.isEmpty()) {
+                confirmados.forEach(p -> {
+                    p.setEsDelegado(false);
+                    postulacionRepository.save(p);
+                });
+                Postulacion nuevoDelegado = confirmados.get(new Random().nextInt(confirmados.size()));
+                nuevoDelegado.setEsDelegado(true);
+                postulacionRepository.save(nuevoDelegado);
+
+                Usuario nuevoDelegadoUsuario = nuevoDelegado.getEstudiante().getUsuario();
+                notificacionService.crearNotificacion(
+                        nuevoDelegadoUsuario,
+                        "🎉 Has sido asignado como delegado",
+                        "El sistema te ha asignado como nuevo delegado del proyecto \"" + proyecto.getTitulo() + "\".",
+                        TipoNotificacion.PROYECTO,
+                        "/workspace/" + proyecto.getId()
+                );
+                try {
+                    emailService.enviarCorreoNotificacion(
+                            nuevoDelegadoUsuario.getEmail(),
+                            "Has sido asignado como delegado del proyecto",
+                            "El sistema te ha asignado como nuevo delegado del proyecto \""
+                                    + proyecto.getTitulo() + "\". Como delegado, eres responsable de coordinar al equipo.\n\n"
+                                    + "Inicia sesión para continuar: http://localhost:5173/login",
+                            nuevoDelegadoUsuario.getNombre()
+                    );
+                } catch (Exception e) {
+                    log.error("Error al enviar email al nuevo delegado: {}", e.getMessage());
+                }
+
+                for (Postulacion p : confirmados) {
+                    if (!p.getId().equals(nuevoDelegado.getId())) {
+                        notificacionService.crearNotificacion(
+                                p.getEstudiante().getUsuario(),
+                                "Nuevo delegado asignado",
+                                nuevoDelegadoUsuario.getNombre() + " ha sido asignado como nuevo delegado del proyecto \""
+                                        + proyecto.getTitulo() + "\".",
+                                TipoNotificacion.PROYECTO,
+                                "/workspace/" + proyecto.getId()
+                        );
+                    }
+                }
+
+                List<Usuario> admins = usuarioRepository.findAll().stream()
+                        .filter(u -> u.getRol().getNombre().equals("ROLE_ADMIN"))
+                        .toList();
+                for (Usuario admin : admins) {
+                    notificacionService.crearNotificacion(
+                            admin,
+                            "Delegado reasignado",
+                            "El delegado del proyecto \"" + proyecto.getTitulo() + "\" fue reasignado a "
+                                    + nuevoDelegadoUsuario.getNombre() + ".",
+                            TipoNotificacion.PROYECTO,
+                            "/admin/proyectos"
+                    );
+                }
+            }
+        }
+    }
+
+    @Transactional
     public void auditarAbandono(Long proyectoId, Long postulacionId, String emailAdmin) {
         var admin = validarRolAdmin(emailAdmin);
         var proyecto = proyectoRepository.findById(proyectoId)
@@ -1013,6 +1165,7 @@ public class ProyectoService {
         WorkflowEstado estadoAnterior = proyecto.getEstado();
         postulacion.setEstado(EstadoPostulacion.RECHAZADO);
         postulacionRepository.save(postulacion);
+        reasignarDelegadoSiEsNecesario(proyecto);
         proyecto.setEstado(WorkflowEstado.PENDIENTE);
         proyectoRepository.save(proyecto);
         workflowHistorialRepository.save(WorkflowHistorial.builder()
@@ -1276,7 +1429,8 @@ public class ProyectoService {
                 p.getFechaInicioReal(),
                 fechaLimiteCalculada,
                 cuposOcupados,
-                p.getMype() != null ? p.getMype().getUsuario().getId() : null
+                p.getMype() != null ? p.getMype().getUsuario().getId() : null,
+                p.getMype() != null ? p.getMype().getDireccion() : null
         );
     }
 
@@ -1307,7 +1461,8 @@ public class ProyectoService {
                         ? p.getProyecto().getAreaSistemas().name()
                         : null,
                 p.getProyecto().getFechaCompletado(),   // ✅ fecha de culminación
-                integrantes                              // ✅ nombres de integrantes (null si no aplica)
+                integrantes,                             // ✅ nombres de integrantes (null si no aplica)
+                p.getProyecto().getMype() != null ? p.getProyecto().getMype().getNombreComercial() : null
         );
     }
 
