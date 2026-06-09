@@ -1,0 +1,94 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=MySQL
+    driverClassName: org.h2.Driver
+    username: sa
+    password: 
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+  flyway:
+    enabled: false
+
+app:
+  email:
+    verification:
+      enabled: false
+  jwt:
+    secret: "TestSecretKeyThatIsAtLeast32BytesLongForHS256Algorithm1234567890"
+    expiration: 3600000
+    access-expiration: 3600000
+    refresh-expiration: 3600000
+    refresh-expiration-remember: 604800000
+  login:
+    max-attempts: 5
+    block-duration-minutes: 10
+
+aws:
+  access-key: "mock"
+  secret-key: "mock"
+  region: "us-east-1"
+  s3:
+    bucket: "mock"
+
+resend:
+  api-key: "mock"
+  from-email: "mock@resend.dev"
+
+admin:
+  enzo:
+    name: "mock"
+    email: "mock"
+    password: "mock"
+    dni: "mock"
+    telefono: "mock"
+    codigo: "mock"
+    carrera: "mock"
+    universidad: "mock"
+  marco:
+    name: "mock"
+    email: "mock"
+    password: "mock"
+    dni: "mock"
+    telefono: "mock"
+    codigo: "mock"
+    carrera: "mock"
+    universidad: "mock"
+  jhon:
+    name: "mock"
+    email: "mock"
+    password: "mock"
+    dni: "mock"
+    telefono: "mock"
+    codigo: "mock"
+    carrera: "mock"
+    universidad: "mock"
+  gianpiero:
+    name: "mock"
+    email: "mock"
+    password: "mock"
+    dni: "mock"
+    telefono: "mock"
+    codigo: "mock"
+    carrera: "mock"
+    universidad: "mock"
+  segundo:
+    name: "mock"
+    email: "mock"
+    password: "mock"
+    dni: "mock"
+    telefono: "mock"
+    codigo: "mock"
+    carrera: "mock"
+    universidad: "mock"
+
+logging:
+  level:
+    org:
+      springframework:
+        security: DEBUG
