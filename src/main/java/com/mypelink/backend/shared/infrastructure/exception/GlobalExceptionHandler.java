@@ -43,7 +43,14 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneral(Exception ex) {
+        ex.printStackTrace(); // Log en la consola del backend
+        try {
+            java.io.PrintWriter pw = new java.io.PrintWriter(new java.io.FileWriter("exception_log.txt", true));
+            pw.println("----- NEW EXCEPTION -----");
+            ex.printStackTrace(pw);
+            pw.close();
+        } catch(Exception ignored) {}
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ErrorResponse.of(500, "Internal Server Error", "Error interno del servidor"));
+                .body(ErrorResponse.of(500, "Internal Server Error", ex.getMessage() != null ? ex.getMessage() : "Error interno del servidor"));
     }
 }

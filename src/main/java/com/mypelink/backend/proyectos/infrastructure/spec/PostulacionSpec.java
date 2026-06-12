@@ -33,39 +33,10 @@ public final class PostulacionSpec {
             String area) {
 
         return (root, query, cb) -> {
-            Join<Postulacion, Proyecto> proyJoin;
-            Join<Proyecto, Mype> mypeJoin;
-            Join<Postulacion, Estudiante> estJoin;
-            Join<Estudiante, Usuario> estUsuJoin;
-
-            if (Long.class != query.getResultType()) {
-                @SuppressWarnings("unchecked")
-                Join<Postulacion, Proyecto> pf =
-                        (Join<Postulacion, Proyecto>)(Object) root.fetch("proyecto", JoinType.INNER);
-                proyJoin = pf;
-
-                @SuppressWarnings("unchecked")
-                Join<Proyecto, Mype> mf =
-                        (Join<Proyecto, Mype>)(Object) proyJoin.fetch("mype", JoinType.INNER);
-                mypeJoin = mf;
-
-                @SuppressWarnings("unchecked")
-                Join<Postulacion, Estudiante> ef =
-                        (Join<Postulacion, Estudiante>)(Object) root.fetch("estudiante", JoinType.INNER);
-                estJoin = ef;
-
-                @SuppressWarnings("unchecked")
-                Join<Estudiante, Usuario> euf =
-                        (Join<Estudiante, Usuario>)(Object) estJoin.fetch("usuario", JoinType.INNER);
-                estUsuJoin = euf;
-
-                query.distinct(true);
-            } else {
-                proyJoin = root.join("proyecto", JoinType.INNER);
-                mypeJoin = proyJoin.join("mype", JoinType.INNER);
-                estJoin = root.join("estudiante", JoinType.INNER);
-                estUsuJoin = estJoin.join("usuario", JoinType.INNER);
-            }
+            Join<Postulacion, Proyecto> proyJoin = root.join("proyecto", JoinType.INNER);
+            Join<Proyecto, Mype> mypeJoin = proyJoin.join("mype", JoinType.INNER);
+            Join<Postulacion, Estudiante> estJoin = root.join("estudiante", JoinType.INNER);
+            Join<Estudiante, Usuario> estUsuJoin = estJoin.join("usuario", JoinType.INNER);
 
             List<Predicate> predicates = new ArrayList<>();
 

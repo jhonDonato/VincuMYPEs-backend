@@ -108,13 +108,13 @@ public class CertificadoService {
 
     @Transactional(readOnly = true)
     public List<CertificadoResponse> listarMisCertificados(String emailEstudiante) {
-        return certificadoRepository.findByEstudianteUsuarioEmailEager(emailEstudiante)
+        return certificadoRepository.findByEstudianteUsuarioEmail(emailEstudiante)
                 .stream().map(this::mapToResponse).collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
     public List<CertificadoResponse> listarCertificadosEmitidos(String emailMype) {
-        return certificadoRepository.findByProyectoMypeUsuarioEmailEager(emailMype)
+        return certificadoRepository.findByProyectoMypeUsuarioEmail(emailMype)
                 .stream().map(this::mapToResponse).collect(Collectors.toList());
     }
 

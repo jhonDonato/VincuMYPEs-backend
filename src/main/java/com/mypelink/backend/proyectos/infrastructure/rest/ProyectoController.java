@@ -21,7 +21,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/proyectos")
 @RequiredArgsConstructor
-//@PreAuthorize("hasAuthority('ROLE_MYPE')")
+// @PreAuthorize("hasAuthority('ROLE_MYPE')")
 public class ProyectoController {
 
     private final ProyectoService proyectoService;
@@ -97,6 +97,15 @@ public class ProyectoController {
         return ResponseEntity.ok(proyectoService.cerrarProyecto(id, userDetails.getUsername()));
     }
 
+    @PatchMapping("/{id}/completar")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
+    public ResponseEntity<Void> completarProyecto(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        proyectoService.completarProyecto(id, userDetails.getUsername());
+        return ResponseEntity.ok().build();
+    }
+
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
     public ResponseEntity<ProyectoResponse> editar(
@@ -160,6 +169,7 @@ public class ProyectoController {
             @RequestParam(value = "insumoTipoIds", required = false) List<Long> insumoTipoIds,
             @RequestParam(value = "valoresTexto", required = false) List<String> valoresTexto,
             @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(proyectoService.subirInsumos(id, archivos, insumoTipoIds, valoresTexto, userDetails.getUsername()));
+        return ResponseEntity
+                .ok(proyectoService.subirInsumos(id, archivos, insumoTipoIds, valoresTexto, userDetails.getUsername()));
     }
 }
