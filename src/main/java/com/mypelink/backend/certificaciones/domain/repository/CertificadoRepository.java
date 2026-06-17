@@ -40,4 +40,17 @@ public interface CertificadoRepository extends JpaRepository<Certificado, Long> 
     Optional<Certificado> findByCodigo(String codigo);
 
     boolean existsByProyectoIdAndEstudianteId(Long proyectoId, Long estudianteId);
+
+    // ═══════════════════════════════════════════
+    // ✅ AGREGAR ESTE MÉTODO NUEVO
+    // ═══════════════════════════════════════════
+    @Query("SELECT c FROM Certificado c " +
+            "LEFT JOIN FETCH c.emitidoPor ep " +
+            "LEFT JOIN FETCH c.estudiante e " +
+            "LEFT JOIN FETCH e.usuario eu " +
+            "LEFT JOIN FETCH c.proyecto p " +
+            "LEFT JOIN FETCH p.mype m " +
+            "LEFT JOIN FETCH m.usuario mu " +
+            "WHERE c.id = :id")
+    Optional<Certificado> findByIdWithRelations(@Param("id") Long id);
 }

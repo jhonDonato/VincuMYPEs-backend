@@ -10,6 +10,10 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 import java.io.IOException;
 import java.net.URLDecoder;
@@ -261,6 +265,80 @@ public class S3Service {
         } catch (Exception e) {
             log.error("Error subiendo imagen a S3: {}", e.getMessage(), e);
             throw new BusinessException("Error de conexión con AWS S3: " + e.getMessage());
+        }
+    }
+    // En S3Service.java, agrega este método:
+    public byte[] descargarArchivo(String key) {
+        try {
+            if (key == null || key.isBlank()) {
+                throw new BusinessException("La key del archivo no puede estar vacía");
+            }
+
+            GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(key)
+                    .build();
+
+            ResponseBytes<GetObjectResponse> objectBytes = s3Client.getObjectAsBytes(getObjectRequest);
+
+            log.info("Archivo descargado de S3: bucket={}, key={}, size={}bytes",
+                    bucketName, key, objectBytes.asByteArray().length);
+
+            return objectBytes.asByteArray();
+        } catch (S3Exception e) {
+            log.error("Error de S3 al descargar archivo: key={}, error={}", key, e.awsErrorDetails().errorMessage());
+            throw new BusinessException("Error al descargar archivo de S3: " + e.awsErrorDetails().errorMessage());
+        } catch (Exception e) {
+            log.error("Error inesperado al descargar archivo: key={}, error={}", key, e.getMessage());
+            throw new BusinessException("Error al descargar archivo de S3");
+        }
+    }
+    // En S3Service.java
+    public String extraerKeyDeUrl(String fileUrl) {
+        try {
+            if (fileUrl == null || fileUrl.isBlank()) {
+                return null;
+            }
+
+            // Si ya es una key (no contiene http), devolverla directamente
+            if (!fileUrl.contains("://")) {
+                return fileUrl;
+            }
+
+            // Formato: https://bucket-name.s3.region.amazonaws.com/path/to/file.png
+            String bucketUrl = bucketName + ".s3.";
+            int bucketIndex = fileUrl.indexOf(bucketUrl);
+
+            if (bucketIndex != -1) {
+                String afterBucket = fileUrl.substring(bucketIndex + bucketUrl.length());
+                // Saltar la región y .amazonaws.com/
+                int regionEnd = afterBucket.indexOf(".amazonaws.com/");
+                if (regionEnd != -1) {
+                    return afterBucket.substring(regionEnd + 15);
+                }
+            }
+
+            // Formato alternativo: https://s3.region.amazonaws.com/bucket-name/path
+            String s3Url = "s3." + region + ".amazonaws.com/";
+            int s3Index = fileUrl.indexOf(s3Url);
+            if (s3Index != -1) {
+                String afterS3 = fileUrl.substring(s3Index + s3Url.length());
+                if (afterS3.startsWith(bucketName + "/")) {
+                    return afterS3.substring(bucketName.length() + 1);
+                }
+            }
+
+            // Si no se puede extraer, intentar obtener la última parte de la URL
+            java.net.URL url = new java.net.URL(fileUrl);
+            String path = url.getPath();
+            if (path.startsWith("/")) {
+                path = path.substring(1);
+            }
+
+            return path;
+        } catch (Exception e) {
+            log.error("Error extrayendo key de URL: {}", fileUrl, e);
+            return null;
         }
     }
 }

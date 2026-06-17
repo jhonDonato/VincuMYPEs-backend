@@ -17,5 +17,9 @@ public record CertificadoResponse(
         Long mypeUsuarioId,
         String urlCertificado,
         LocalDate fechaEmision,
-        LocalDateTime fechaEnvio
+        LocalDateTime fechaEnvio,
+        // ✅ NUEVOS CAMPOS
+        String gerenteNombre,
+        String firmaUrl,
+        String nombreRepresentante
 ) {}

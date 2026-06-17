@@ -71,18 +71,49 @@ public class CertificadoService {
                 continue;
             }
 
+            // Busca esta parte en tu CertificadoService.java (dentro del for loop)
             String codigo = "CERT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
+// ✅ NUEVO: Procesar la firma - Subir a S3
+            String firmaUrlS3 = null;
+            if (request.firmaBase64() != null && !request.firmaBase64().isBlank()) {
+                try {
+                    // Limpiar el prefijo data:image/...;base64, si existe
+                    String base64Limpio = request.firmaBase64();
+                    if (base64Limpio.contains(",")) {
+                        base64Limpio = base64Limpio.substring(base64Limpio.indexOf(",") + 1);
+                    }
+
+                    // Decodificar base64 a bytes
+                    byte[] firmaBytes = java.util.Base64.getDecoder().decode(base64Limpio);
+
+                    // Subir a S3 usando el método existente subirCertificado
+                    String nombreArchivo = "firmas/" + codigo + "_firma.png";
+                    firmaUrlS3 = s3Service.subirCertificado(firmaBytes, nombreArchivo);
+
+                    log.info("✅ Firma subida a S3: {}", firmaUrlS3);
+                } catch (Exception e) {
+                    log.error("❌ Error al subir firma a S3: {}", e.getMessage());
+                    // Si falla S3, guardamos null (no guardamos base64 en BD)
+                    firmaUrlS3 = null;
+                }
+            }
+
+// Crear el certificado con la URL de S3
             Certificado certificado = Certificado.builder()
                     .proyecto(proyecto)
                     .estudiante(postulacion.getEstudiante())
                     .codigo(codigo)
                     .tituloCertificado(request.tituloCertificado())
                     .descripcionCertificado(request.descripcionCertificado())
+                    .gerenteNombre(request.gerenteNombre())
+                    .firmaUrl(firmaUrlS3) // ✅ Guarda la URL de S3 (corta)
                     .emitidoPor(usuarioMype)
                     .build();
 
             Certificado guardado = certificadoRepository.save(certificado);
+
+
 
             log.debug("[Certificado] Emitido - estudianteId={}, proyectoId={}, titulo={}",
                     postulacion.getEstudiante().getId(),
@@ -94,7 +125,7 @@ public class CertificadoService {
 
             byte[] pdfBytes = pdfGeneratorService.generarCertificadoPDF(
                     full, proyecto, proyecto.getMype(),
-                    request.firmaBase64(), request.gerenteNombre());
+                    firmaUrlS3, request.gerenteNombre());  // ✅ USA LA VARIABLE firmaUrlS3
 
             String pdfUrl = s3Service.subirCertificado(pdfBytes, "certificados/" + codigo + ".pdf");
             full.setUrlCertificado(pdfUrl);
@@ -202,7 +233,11 @@ public class CertificadoService {
                 c.getProyecto().getMype().getUsuario().getId(),
                 c.getUrlCertificado(),
                 c.getFechaEmision(),
-                c.getFechaEnvio()
+                c.getFechaEnvio(),
+                // ✅ NUEVOS CAMPOS
+                c.getGerenteNombre(),
+                c.getFirmaUrl(),
+                c.getProyecto().getMype().getNombreRepresentante() // Si existe este campo
         );
     }
 }

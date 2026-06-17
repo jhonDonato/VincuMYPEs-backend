@@ -10,5 +10,9 @@ public record EmitirCertificadoRequest(
         @NotBlank String tituloCertificado,
         String descripcionCertificado,
         String firmaBase64,
-        String gerenteNombre
+        String gerenteNombre,
+        // ✅ Asegurar que estos campos existen
+        String proyectoTitulo,
+        String estudianteNombre,
+        String mypeNombre
 ) {}

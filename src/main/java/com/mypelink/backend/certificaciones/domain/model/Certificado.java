@@ -10,8 +10,8 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(
-    name = "certificados",
-    uniqueConstraints = @UniqueConstraint(columnNames = {"proyecto_id", "estudiante_id"})
+        name = "certificados",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"proyecto_id", "estudiante_id"})
 )
 @Getter
 @Setter
@@ -49,6 +49,13 @@ public class Certificado {
 
     @Column(name = "qr_code", length = 255)
     private String qrCode;
+
+    // ✅ NUEVOS CAMPOS
+    @Column(name = "gerente_nombre", length = 300)
+    private String gerenteNombre;
+
+    @Column(name = "firma_url", columnDefinition = "TEXT")
+    private String firmaUrl;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "emitido_por")

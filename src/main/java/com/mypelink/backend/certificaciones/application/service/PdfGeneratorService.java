@@ -15,12 +15,12 @@ import java.util.Locale;
 public class PdfGeneratorService {
 
     public byte[] generarCertificadoPDF(Certificado certificado, Proyecto proyecto, Mype mype,
-                                        String firmaBase64, String gerenteNombre) {
+                                        String firmaUrl, String gerenteNombre) { // ← CAMBIADO firmaBase64 → firmaUrl
         log.debug("[PDF] Generando - estudiante={}, proyecto={}",
                 certificado.getEstudiante().getUsuario().getNombre(),
                 proyecto.getTitulo());
 
-        String html = buildHtml(certificado, proyecto, mype, firmaBase64, gerenteNombre);
+        String html = buildHtml(certificado, proyecto, mype, firmaUrl, gerenteNombre); // ← CAMBIADO
 
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             ITextRenderer renderer = new ITextRenderer();
@@ -35,7 +35,7 @@ public class PdfGeneratorService {
     }
 
     private String buildHtml(Certificado certificado, Proyecto proyecto, Mype mype,
-                             String firmaBase64, String gerenteNombre) {
+                             String firmaUrl, String gerenteNombre) { // ← CAMBIADO
 
         String nombreEstudiante = certificado.getEstudiante().getUsuario().getNombre();
         String tituloProyecto   = proyecto.getTitulo();
@@ -49,16 +49,35 @@ public class PdfGeneratorService {
                         "dd 'de' MMMM 'de' yyyy", new Locale("es", "ES")));
         String codigo           = certificado.getCodigo();
 
-        // Firma
+        // ═══════════════════════════════════════════
+        // ✅ NUEVO: Manejar firma como URL de S3 o base64
+        // ═══════════════════════════════════════════
         String firmaHtml;
-        if (firmaBase64 != null && !firmaBase64.isBlank()) {
-            String src = firmaBase64.startsWith("data:") ? firmaBase64
-                    : "data:image/png;base64," + firmaBase64;
-            firmaHtml = "<img src=\"" + src + "\" style=\"display: block; margin: 0 auto; height: 50px; width: auto;\" />";
+        if (firmaUrl != null && !firmaUrl.isBlank()) {
+            if (firmaUrl.startsWith("http")) {
+                // Es una URL de S3
+                firmaHtml = "<img src=\"" + firmaUrl + "\" " +
+                        "style=\"display: block; margin: 0 auto; " +
+                        "height: 50px; width: auto;\" " +
+                        "alt=\"Firma\" />";
+            } else if (firmaUrl.startsWith("data:image")) {
+                // Es base64 con prefijo
+                firmaHtml = "<img src=\"" + firmaUrl + "\" " +
+                        "style=\"display: block; margin: 0 auto; " +
+                        "height: 50px; width: auto;\" />";
+            } else {
+                // Es base64 sin prefijo
+                firmaHtml = "<img src=\"data:image/png;base64," + firmaUrl + "\" " +
+                        "style=\"display: block; margin: 0 auto; " +
+                        "height: 50px; width: auto;\" />";
+            }
         } else {
             firmaHtml = "<div style=\"height: 50px;\"></div>";
         }
 
+        // ═══════════════════════════════════════════
+        // El resto del HTML se mantiene IGUAL
+        // ═══════════════════════════════════════════
         return "<!DOCTYPE html>\n"
                 + "<html>\n"
                 + "<head>\n"
@@ -82,7 +101,7 @@ public class PdfGeneratorService {
                 + "  .page-container {\n"
                 + "    width: 297mm;\n"
                 + "    height: 210mm;\n"
-                + "    padding: 12.5mm 13.5mm;\n" // Margen exterior del diploma
+                + "    padding: 12.5mm 13.5mm;\n"
                 + "    box-sizing: border-box;\n"
                 + "  }\n"
                 + "  .certificado {\n"
@@ -92,7 +111,7 @@ public class PdfGeneratorService {
                 + "    border-radius: 16px;\n"
                 + "    position: relative;\n"
                 + "    background: white;\n"
-                + "    text-align: center;\n" // Centrado sin Flexbox
+                + "    text-align: center;\n"
                 + "  }\n"
                 + "  .esquina {\n"
                 + "    position: absolute;\n"

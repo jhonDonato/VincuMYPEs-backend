@@ -102,9 +102,18 @@ class CertificadoServiceTest {
         when(pdfGeneratorService.generarCertificadoPDF(any(), any(), any(), any(), any())).thenReturn(new byte[]{1,2,3});
         when(s3Service.subirCertificado(any(), any())).thenReturn("https://s3.test/cert.pdf");
 
-        EmitirCertificadoRequest request = new EmitirCertificadoRequest(
-                1L, List.of(1L), "Certificado Test", "Desc", null, null);
-
+        EmitirCertificadoRequest request = // ✅ CORRECTO: Debe tener 9 parámetros
+                new EmitirCertificadoRequest(
+                        1L,                    // proyectoId
+                        List.of(1L),          // estudiantesIds
+                        "Certificado Test",   // tituloCertificado
+                        "Desc",               // descripcionCertificado
+                        null,                 // firmaBase64
+                        null,                 // gerenteNombre
+                        null,                 // proyectoTitulo (NUEVO)
+                        null,                 // estudianteNombre (NUEVO)
+                        null                  // mypeNombre (NUEVO)
+                );
         List<CertificadoResponse> responses = certificadoService.emitirCertificados("mype@test.com", request);
 
         assertNotNull(responses);
@@ -117,9 +126,18 @@ class CertificadoServiceTest {
         when(usuarioRepository.findByEmail("mype@test.com")).thenReturn(Optional.of(usuarioAdmin));
         when(proyectoRepository.findById(1L)).thenReturn(Optional.of(proyecto));
 
-        EmitirCertificadoRequest request = new EmitirCertificadoRequest(
-                1L, List.of(1L), "Certificado", "Desc", null, null);
-
+        EmitirCertificadoRequest request = // ✅ CORRECTO: Debe tener 9 parámetros
+                new EmitirCertificadoRequest(
+                        1L,                    // proyectoId
+                        List.of(1L),          // estudiantesIds
+                        "Certificado Test",   // tituloCertificado
+                        "Desc",               // descripcionCertificado
+                        null,                 // firmaBase64
+                        null,                 // gerenteNombre
+                        null,                 // proyectoTitulo (NUEVO)
+                        null,                 // estudianteNombre (NUEVO)
+                        null                  // mypeNombre (NUEVO)
+                );
         assertThrows(BusinessException.class,
                 () -> certificadoService.emitirCertificados("mype@test.com", request));
     }
@@ -133,9 +151,18 @@ class CertificadoServiceTest {
         when(usuarioRepository.findByEmail("mype@test.com")).thenReturn(Optional.of(usuarioMype));
         when(proyectoRepository.findById(2L)).thenReturn(Optional.of(proyectoPendiente));
 
-        EmitirCertificadoRequest request = new EmitirCertificadoRequest(
-                2L, List.of(1L), "Certificado", "Desc", null, null);
-
+        EmitirCertificadoRequest request = // ✅ CORRECTO: Debe tener 9 parámetros
+                new EmitirCertificadoRequest(
+                        1L,                    // proyectoId
+                        List.of(1L),          // estudiantesIds
+                        "Certificado Test",   // tituloCertificado
+                        "Desc",               // descripcionCertificado
+                        null,                 // firmaBase64
+                        null,                 // gerenteNombre
+                        null,                 // proyectoTitulo (NUEVO)
+                        null,                 // estudianteNombre (NUEVO)
+                        null                  // mypeNombre (NUEVO)
+                );
         assertThrows(BusinessException.class,
                 () -> certificadoService.emitirCertificados("mype@test.com", request));
     }
@@ -147,9 +174,18 @@ class CertificadoServiceTest {
         when(postulacionRepository.findByProyectoIdAndEstudianteId(1L, 1L)).thenReturn(Optional.of(postulacion));
         when(certificadoRepository.existsByProyectoIdAndEstudianteId(1L, 1L)).thenReturn(true);
 
-        EmitirCertificadoRequest request = new EmitirCertificadoRequest(
-                1L, List.of(1L), "Certificado", "Desc", null, null);
-
+        EmitirCertificadoRequest request = // ✅ CORRECTO: Debe tener 9 parámetros
+                new EmitirCertificadoRequest(
+                        1L,                    // proyectoId
+                        List.of(1L),          // estudiantesIds
+                        "Certificado Test",   // tituloCertificado
+                        "Desc",               // descripcionCertificado
+                        null,                 // firmaBase64
+                        null,                 // gerenteNombre
+                        null,                 // proyectoTitulo (NUEVO)
+                        null,                 // estudianteNombre (NUEVO)
+                        null                  // mypeNombre (NUEVO)
+                );
         List<CertificadoResponse> responses = certificadoService.emitirCertificados("mype@test.com", request);
 
         assertTrue(responses.isEmpty());
