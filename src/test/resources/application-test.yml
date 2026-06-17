@@ -87,6 +87,8 @@ admin:
     carrera: "mock"
     universidad: "mock"
 
+API_TOKEN: "mock-api-token"
+
 logging:
   level:
     org:

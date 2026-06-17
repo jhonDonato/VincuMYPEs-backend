@@ -1,5 +1,6 @@
 package com.mypelink.backend.usuarios.domain.repository;
 
+import com.mypelink.backend.usuarios.domain.model.EstadoMype;
 import com.mypelink.backend.usuarios.domain.model.Mype;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -11,5 +12,5 @@ public interface MypeRepository extends JpaRepository<Mype, Long> {
     Optional<Mype> findByUsuarioId(Long usuarioId);
     boolean existsByRuc(String ruc);
     List<Mype> findByUsuarioIdIn(Set<Long> usuarioIds);
-
+    List<Mype> findByEstado(EstadoMype estado);
 }

@@ -61,6 +61,11 @@ public class Mype {
     private String whatsapp;
     // ──────────────────────────────────────────────────────────
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private EstadoMype estado = EstadoMype.PENDIENTE;
+
     @Column(nullable = false)
     private Boolean activo;
 
@@ -71,6 +76,7 @@ public class Mype {
     protected void onCreate() {
         this.fechaRegistro = LocalDateTime.now();
         if (this.activo == null) this.activo = true;
+        if (this.estado == null) this.estado = EstadoMype.PENDIENTE;
     }
 
     @Column(length = 100)
