@@ -1476,24 +1476,29 @@ public class ProyectoService {
                 boolean ocupado = activos >= limite;
 
                 return new PostulacionResponse(
-                                p.getId(), p.getProyecto().getId(), p.getProyecto().getTitulo(),
-                                p.getEstudiante().getId(), p.getEstudiante().getUsuario().getNombre(),
-                                p.getEstado(), p.getMensajePostulacion(), p.getFechaPostulacion(),
-                                p.getEstudiante().getCvUrl(),
-                                p.getFechaLimiteConfirmacion(),
-                                ocupado, // ← campo de Enzo (ocupado)
-                                p.getEsDelegado(), // ← campo de Jhon (delegado)
-                                // ✅ NUEVOS
-                                p.getProyecto().getEstado(),
-                                p.getProyecto().getCupos(),
-                                p.getProyecto().getFechaInicioReal(),
-                                p.getProyecto().getAreaSistemas() != null
-                                                ? p.getProyecto().getAreaSistemas().name()
-                                                : null,
-                                p.getProyecto().getFechaCompletado(), // ✅ fecha de culminación
-                                integrantes, // ✅ nombres de integrantes (null si no aplica)
-                                p.getProyecto().getMype() != null ? p.getProyecto().getMype().getNombreComercial()
-                                                : null);
+                        p.getId(),
+                        p.getProyecto().getId(),
+                        p.getProyecto().getTitulo(),
+                        p.getEstudiante().getId(),
+                        p.getEstudiante().getUsuario().getNombre(),
+                        p.getEstado(),
+                        p.getMensajePostulacion(),
+                        p.getFechaPostulacion(),
+                        p.getEstudiante().getCvUrl(),
+                        p.getFechaLimiteConfirmacion(),
+                        ocupado,
+                        p.getEsDelegado(),
+                        p.getProyecto().getEstado(),
+                        p.getProyecto().getCupos(),
+                        p.getProyecto().getFechaInicioReal(),
+                        p.getProyecto().getAreaSistemas() != null
+                                ? p.getProyecto().getAreaSistemas().name()
+                                : null,
+                        p.getProyecto().getFechaCompletado(),
+                        integrantes,
+                        p.getProyecto().getMype() != null ? p.getProyecto().getMype().getNombreComercial() : null,
+                        p.getProyecto().getMype() != null ? p.getProyecto().getMype().getDireccion() : null   // ← nuevo campo
+                );
         }
 
         private long contarProyectosActivosDelEstudiante(Long estudianteId) {
