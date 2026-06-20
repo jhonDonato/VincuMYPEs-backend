@@ -20,6 +20,9 @@ public record CertificadoResponse(
         LocalDateTime fechaEnvio,
         // ✅ NUEVOS CAMPOS
         String gerenteNombre,
+        String cargoRepresentante,
         String firmaUrl,
-        String nombreRepresentante
+        String nombreRepresentante,
+        String rucMype,
+        String pdfBase64
 ) {}

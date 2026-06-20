@@ -54,6 +54,9 @@ public class Certificado {
     @Column(name = "gerente_nombre", length = 300)
     private String gerenteNombre;
 
+    @Column(name = "cargo_representante", length = 200)
+    private String cargoRepresentante;
+
     @Column(name = "firma_url", columnDefinition = "TEXT")
     private String firmaUrl;
 
@@ -66,6 +69,9 @@ public class Certificado {
 
     @Column(name = "fecha_envio")
     private LocalDateTime fechaEnvio;
+
+    @Column(name = "pdf_base64", columnDefinition = "LONGTEXT")
+    private String pdfBase64;
 
     @PrePersist
     protected void onCreate() {
