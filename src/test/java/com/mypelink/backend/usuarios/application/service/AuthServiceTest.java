@@ -110,14 +110,12 @@ class AuthServiceTest {
                 Usuario.builder().id(2L).nombre("Mype").email("mype@test.com")
                         .password("encoded").rol(roleMype).build());
         when(mypeRepository.save(any(Mype.class))).thenReturn(null);
-        when(jwtService.generateToken(any(), anyMap(), anyLong())).thenReturn("token");
 
         AuthResponse response = authService.registerMype(
                 new RegisterMypeRequest("Mype", "mype@test.com", "Pass1234!",
                         "999888777", "MYPE SAC", "MYPE SAC", "10123456789", "Tec", "Av Test"));
 
-        assertNotNull(response);
-        assertEquals("token", response.token());
+        assertNull(response);
     }
 
     @Test

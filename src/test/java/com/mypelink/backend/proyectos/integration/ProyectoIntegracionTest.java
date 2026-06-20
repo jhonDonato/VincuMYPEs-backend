@@ -4,8 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mypelink.backend.auth.recovery.application.service.EmailService;
 import com.mypelink.backend.shared.domain.enums.AreaSistemas;
 import com.mypelink.backend.shared.infrastructure.websocket.WebSocketNotificationService;
+import com.mypelink.backend.usuarios.domain.model.EstadoMype;
+import com.mypelink.backend.usuarios.domain.model.Mype;
 import com.mypelink.backend.usuarios.domain.model.Role;
+import com.mypelink.backend.usuarios.domain.repository.MypeRepository;
 import com.mypelink.backend.usuarios.domain.repository.RoleRepository;
+import com.mypelink.backend.usuarios.domain.repository.UsuarioRepository;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,6 +46,12 @@ class ProyectoIntegracionTest {
     @Autowired
     private EntityManager em;
 
+    @Autowired
+    private UsuarioRepository usuarioRepository;
+
+    @Autowired
+    private MypeRepository mypeRepository;
+
     @MockitoBean
     private EmailService emailService;
 
@@ -57,17 +67,31 @@ class ProyectoIntegracionTest {
         em.flush();
     }
 
+    private String approveAndLoginMype(String email, String password) throws Exception {
+        var usuario = usuarioRepository.findByEmailWithRole(email).orElseThrow();
+        var mype = mypeRepository.findByUsuarioId(usuario.getId()).orElseThrow();
+        mype.setEstado(EstadoMype.APROBADO);
+        mypeRepository.save(mype);
+        em.flush();
+
+        var loginJson = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\",\"rememberMe\":false}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return "Bearer " + ((String) objectMapper.readValue(loginJson, Map.class).get("token"));
+    }
+
     @Test
     void crearProyecto_Success() throws Exception {
-        var json = mockMvc.perform(post("/api/auth/register/mype")
+        mockMvc.perform(post("/api/auth/register/mype")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"nombre":"Mype Crear","email":"mype.crear@email.com","password":"Pass@1234",
                                  "telefono":"999101010","nombreComercial":"Crear SAC","razonSocial":"Crear SAC",
                                  "ruc":"20101010101","rubro":"Tecnologia","direccion":"Av. 1"}"""))
-                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+                .andExpect(status().isCreated());
         em.flush();
-        var token = "Bearer " + ((String) objectMapper.readValue(json, Map.class).get("token"));
+        var token = approveAndLoginMype("mype.crear@email.com", "Pass@1234");
 
         mockMvc.perform(post("/api/proyectos")
                         .header("Authorization", token)
@@ -82,15 +106,15 @@ class ProyectoIntegracionTest {
 
     @Test
     void crearYPublicarProyecto_Success() throws Exception {
-        var json = mockMvc.perform(post("/api/auth/register/mype")
+        mockMvc.perform(post("/api/auth/register/mype")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"nombre":"Mype Pub","email":"mype.pub@email.com","password":"Pass@1234",
                                  "telefono":"999202020","nombreComercial":"Pub SAC","razonSocial":"Pub SAC",
                                  "ruc":"20202020202","rubro":"Tecnologia","direccion":"Av. 2"}"""))
-                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+                .andExpect(status().isCreated());
         em.flush();
-        var token = "Bearer " + ((String) objectMapper.readValue(json, Map.class).get("token"));
+        var token = approveAndLoginMype("mype.pub@email.com", "Pass@1234");
 
         var crearJson = mockMvc.perform(post("/api/proyectos")
                         .header("Authorization", token)
@@ -109,15 +133,15 @@ class ProyectoIntegracionTest {
 
     @Test
     void postularAProyecto_Success() throws Exception {
-        var mypeJson = mockMvc.perform(post("/api/auth/register/mype")
+        mockMvc.perform(post("/api/auth/register/mype")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"nombre":"Mype Post","email":"mype.post@email.com","password":"Pass@1234",
                                  "telefono":"999303030","nombreComercial":"Post SAC","razonSocial":"Post SAC",
                                  "ruc":"20303030303","rubro":"Tecnologia","direccion":"Av. 3"}"""))
-                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+                .andExpect(status().isCreated());
         em.flush();
-        var mypeToken = "Bearer " + ((String) objectMapper.readValue(mypeJson, Map.class).get("token"));
+        var mypeToken = approveAndLoginMype("mype.post@email.com", "Pass@1234");
 
         var proyJson = mockMvc.perform(post("/api/proyectos")
                         .header("Authorization", mypeToken)
@@ -151,15 +175,15 @@ class ProyectoIntegracionTest {
 
     @Test
     void listarProyectosPublicos_Success() throws Exception {
-        var mypeJson = mockMvc.perform(post("/api/auth/register/mype")
+        mockMvc.perform(post("/api/auth/register/mype")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"nombre":"Mype List","email":"mype.list@email.com","password":"Pass@1234",
                                  "telefono":"999404040","nombreComercial":"List SAC","razonSocial":"List SAC",
                                  "ruc":"20404040404","rubro":"Tecnologia","direccion":"Av. 4"}"""))
-                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+                .andExpect(status().isCreated());
         em.flush();
-        var mypeToken = "Bearer " + ((String) objectMapper.readValue(mypeJson, Map.class).get("token"));
+        var mypeToken = approveAndLoginMype("mype.list@email.com", "Pass@1234");
 
         var proyJson = mockMvc.perform(post("/api/proyectos")
                         .header("Authorization", mypeToken)
