@@ -122,17 +122,38 @@ public class S3Service {
             throw new BusinessException("El archivo adjunto está vacío.");
         }
 
-        if (!"application/pdf".equalsIgnoreCase(file.getContentType())) {
-            throw new BusinessException("Formato no válido. Por seguridad, los entregables solo pueden ser archivos PDF.");
+        // Validar tamaño máximo (5 MB)
+        long maxBytes = 5L * 1024 * 1024;
+        if (file.getSize() > maxBytes) {
+            throw new BusinessException("El archivo no puede superar los 5 MB.");
         }
 
-        String fileName = "entregables/" + UUID.randomUUID() + "_" + file.getOriginalFilename().replace(" ", "_");
+        // Validar tipo MIME permitido
+        String contentType = file.getContentType();
+        boolean esPdf = "application/pdf".equalsIgnoreCase(contentType);
+        boolean esWord = "application/msword".equalsIgnoreCase(contentType)
+                || "application/vnd.openxmlformats-officedocument.wordprocessingml.document".equalsIgnoreCase(contentType);
+        boolean esTxt = "text/plain".equalsIgnoreCase(contentType);
+        boolean esPpt = "application/vnd.ms-powerpoint".equalsIgnoreCase(contentType)
+                || "application/vnd.openxmlformats-officedocument.presentationml.presentation".equalsIgnoreCase(contentType);
+
+        if (!esPdf && !esWord && !esTxt && !esPpt) {
+            throw new BusinessException("Formato no permitido. Solo se aceptan: PDF, Word, TXT y PowerPoint.");
+        }
+
+        // Generar nombre único
+        String originalName = file.getOriginalFilename();
+        String extension = "";
+        if (originalName != null && originalName.contains(".")) {
+            extension = originalName.substring(originalName.lastIndexOf("."));
+        }
+        String fileName = "entregables/" + UUID.randomUUID() + "_" + originalName.replace(" ", "_");
 
         try {
             PutObjectRequest putOb = PutObjectRequest.builder()
                     .bucket(bucketName)
                     .key(fileName)
-                    .contentType("application/pdf")
+                    .contentType(contentType)
                     .build();
 
             s3Client.putObject(putOb, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
@@ -140,8 +161,8 @@ public class S3Service {
             return "https://" + bucketName + ".s3." + region + ".amazonaws.com/" + fileName;
 
         } catch (IOException e) {
-            log.error("Error procesando archivo PDF: {}", e.getMessage(), e);
-            throw new BusinessException("Ocurrió un error al procesar el archivo PDF.");
+            log.error("Error procesando archivo: {}", e.getMessage(), e);
+            throw new BusinessException("Ocurrió un error al procesar el archivo.");
         } catch (Exception e) {
             log.error("Error subiendo a S3: {}", e.getMessage(), e);
             throw new BusinessException("Error de conexión con AWS S3: " + e.getMessage());
