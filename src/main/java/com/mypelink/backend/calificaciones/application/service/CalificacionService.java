@@ -22,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
-
+import java.util.Map;
 @Service
 @RequiredArgsConstructor
 public class CalificacionService {
@@ -197,6 +197,14 @@ public class CalificacionService {
 
         Double promedio = calificacionRepository.promedioDeUsuario(usuarioId);
         long cantidad = calificacionRepository.cantidadDeUsuario(usuarioId);
-        return new RatingResponse(promedio, cantidad);
+
+// Calcular distribución por puntuación
+        Map<Integer, Long> distribucion = new java.util.HashMap<>();
+        for (int i = 1; i <= 5; i++) {
+            long count = calificacionRepository.cantidadPorPuntuacion(usuarioId, i);
+            distribucion.put(i, count);
+        }
+
+        return new RatingResponse(promedio, cantidad, distribucion);
     }
 }

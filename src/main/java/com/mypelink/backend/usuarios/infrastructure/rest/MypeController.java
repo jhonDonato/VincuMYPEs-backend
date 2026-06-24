@@ -9,6 +9,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/mypes")
@@ -49,5 +51,13 @@ public class MypeController {
         return ResponseEntity.ok(
                 proyectoService.miPerfilMype(userDetails.getUsername())
         );
+    }
+    @PostMapping("/upload-photo")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
+    public ResponseEntity<Map<String, String>> uploadPhoto(
+            @RequestParam("file") MultipartFile file,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        String url = proyectoService.uploadFotoPerfil(file, userDetails.getUsername());
+        return ResponseEntity.ok(Map.of("url", url));
     }
 }

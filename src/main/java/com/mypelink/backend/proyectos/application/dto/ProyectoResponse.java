@@ -25,5 +25,6 @@ public record ProyectoResponse(
         LocalDate fechaLimiteCalculada,
         Long cuposOcupados,
         Long mypeUsuarioId,
-        String mypeDireccion
+        String mypeDireccion,
+        String mypeFotoPerfil
 ) {}

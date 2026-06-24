@@ -88,5 +88,9 @@ public interface CalificacionRepository extends JpaRepository<Calificacion, Long
             @Param("proyectoId") Long proyectoId,
             @Param("calificadorId") Long calificadorId,
             @Param("calificadoId") Long calificadoId);
+
+    @Query("SELECT COUNT(c) FROM Calificacion c WHERE c.calificado.id = :usuarioId AND c.puntuacion = :puntuacion")
+    long cantidadPorPuntuacion(@Param("usuarioId") Long usuarioId, @Param("puntuacion") Integer puntuacion);
 }
+
 

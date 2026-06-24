@@ -20,4 +20,5 @@ public class MypePerfilPublicoResponse {
     private String sector;
     private Double latitud;
     private Double longitud;
+    private Long usuarioId;
 }

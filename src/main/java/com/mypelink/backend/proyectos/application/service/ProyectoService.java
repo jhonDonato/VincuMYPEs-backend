@@ -1298,26 +1298,27 @@ public class ProyectoService {
                                 .toList();
 
                 return new MypePerfilResponse(
-                                mype.getId(),
-                                mype.getNombreComercial(),
-                                mype.getNombreRepresentante(),
-                                mype.getRazonSocial(),
-                                mype.getRubro(),
-                                mype.getUsuario().getFotoPerfil(),
-                                mype.getDescripcion(),
-                                mype.getSitioWeb(),
-                                mype.getInstagram(),
-                                mype.getFacebook(),
-                                mype.getTiktok(),
-                                mype.getWhatsapp(),
-                                tieneAcceso ? mype.getRuc() : null,
-                                tieneAcceso ? mype.getDireccion() : null,
-                                tieneAcceso ? mype.getTelefono() : null,
-                                tieneAcceso ? mype.getEmailContacto() : null,
-                                nivelAcceso,
-                                totalProyectos,
-                                proyectosActivos,
-                                proyectosResponse);
+                        mype.getId(),
+                        mype.getNombreComercial(),
+                        mype.getNombreRepresentante(),
+                        mype.getRazonSocial(),
+                        mype.getRubro(),
+                        mype.getUsuario().getFotoPerfil(),
+                        mype.getDescripcion(),
+                        mype.getSitioWeb(),
+                        mype.getInstagram(),
+                        mype.getFacebook(),
+                        mype.getTiktok(),
+                        mype.getWhatsapp(),
+                        tieneAcceso ? mype.getRuc() : null,
+                        tieneAcceso ? mype.getDireccion() : null,
+                        tieneAcceso ? mype.getUsuario().getTelefono() : null,        // ← CAMBIADO: del Usuario
+                        tieneAcceso ? mype.getUsuario().getEmail() : null,            // ← CAMBIADO: del Usuario
+                        nivelAcceso,
+                        totalProyectos,
+                        proyectosActivos,
+                        proyectosResponse
+                );
         }
 
         @Transactional
@@ -1386,6 +1387,7 @@ public class ProyectoService {
                                 .sector(mype.getSector())
                                 .latitud(mype.getLatitud())
                                 .longitud(mype.getLongitud())
+                        .usuarioId(mype.getUsuario().getId())
                                 .build();
         }
 
@@ -1417,10 +1419,9 @@ public class ProyectoService {
                 if (request.direccion() != null)
                         mype.setDireccion(request.direccion().isBlank() ? null : request.direccion());
                 if (request.telefono() != null)
-                        mype.setTelefono(request.telefono().isBlank() ? null : request.telefono());
+                        mype.getUsuario().setTelefono(request.telefono().isBlank() ? null : request.telefono());
                 if (request.emailContacto() != null)
-                        mype.setEmailContacto(request.emailContacto().isBlank() ? null : request.emailContacto());
-
+                        mype.getUsuario().setEmail(request.emailContacto().isBlank() ? null : request.emailContacto());
                 mypeRepository.save(mype);
                 return obtenerPerfilMype(mypeId, emailMype);
         }
@@ -1461,7 +1462,8 @@ public class ProyectoService {
                                 fechaLimiteCalculada,
                                 cuposOcupados,
                                 p.getMype() != null ? p.getMype().getUsuario().getId() : null,
-                                p.getMype() != null ? p.getMype().getDireccion() : null);
+                                p.getMype() != null ? p.getMype().getDireccion() : null,
+                        p.getMype() != null && p.getMype().getUsuario() != null ? p.getMype().getUsuario().getFotoPerfil() : null);
         }
 
         // ✅ Versión simple: delega en la versión con integrantes (sin lista)
@@ -1510,5 +1512,18 @@ public class ProyectoService {
                                 estudianteId,
                                 EstadoPostulacion.CONFIRMADO,
                                 proyectoEstadosActivos);
+        }
+        @Transactional
+        public String uploadFotoPerfil(MultipartFile file, String emailMype) {
+                var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                        .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+
+                // ✅ Usar subirImagenPerfil (ya existe en S3Service con SDK v2)
+                String url = s3Service.subirImagenPerfil(file);
+
+                usuario.setFotoPerfil(url);
+                usuarioRepository.save(usuario);
+
+                return url;
         }
 }
