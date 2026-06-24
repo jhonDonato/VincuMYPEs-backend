@@ -25,7 +25,6 @@ public class EntregableController {
 
     private final EntregableService entregableService;
 
-    // ✅ SUBIR ENTREGABLE (ESTUDIANTE)
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAnyAuthority('ROLE_ESTUDIANTE', 'ESTUDIANTE')")
     public ResponseEntity<EntregableResponse> subir(
@@ -33,10 +32,11 @@ public class EntregableController {
             @RequestParam("titulo") String titulo,
             @RequestParam("descripcion") String descripcion,
             @RequestParam("archivo") MultipartFile archivo,
+            @RequestParam(value = "entregableId", required = false) Long entregableId,
             @AuthenticationPrincipal UserDetails userDetails) {
 
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(entregableService.subir(proyectoId, titulo, descripcion, archivo, userDetails.getUsername()));
+                .body(entregableService.subir(proyectoId, titulo, descripcion, archivo, userDetails.getUsername(), entregableId));
     }
 
     // ✅ LISTAR TODOS LOS ENTREGABLES DEL PROYECTO (MYPE)

@@ -54,7 +54,7 @@ public class EntregableService {
 
     @Transactional
     public EntregableResponse subir(Long proyectoId, String titulo, String descripcion, MultipartFile archivo,
-                                    String emailEstudiante) {
+                                    String emailEstudiante, Long entregableId) {
         var usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
                 .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
         var estudiante = estudianteRepository.findByUsuarioId(usuario.getId())
@@ -62,40 +62,62 @@ public class EntregableService {
         var proyecto = proyectoRepository.findById(proyectoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
 
-        // ✅ ÚNICA validación (completa)
+        // Validar postulación
         var postulacion = postulacionRepository
                 .findByProyectoIdAndEstudianteId(proyectoId, estudiante.getId())
                 .orElseThrow(() -> new BusinessException("No eres parte de este proyecto"));
 
-        // Validar que esté confirmado
         if (postulacion.getEstado() != EstadoPostulacion.CONFIRMADO) {
             throw new BusinessException("Solo estudiantes confirmados pueden subir entregables");
         }
 
         String archivoUrl = s3Service.subirEntregablePdf(archivo);
 
-        // ✅ Guardar con subidoPor
-        var entregable = entregableRepository.save(Entregable.builder()
-                .proyecto(proyecto)
-                .estudiante(estudiante)
-                .titulo(titulo)
-                .descripcion(descripcion)
-                .archivo(archivoUrl)
-                .subidoPor(usuario)  // ← AGREGADO
-                .build());
-        try {
-            String mypeEmail = proyecto.getMype().getUsuario().getEmail();
-            String mypeNombre = proyecto.getMype().getUsuario().getNombre();
-            String emailTitulo = "Nuevo entregable subido en tu proyecto";
-            String mensaje = String.format(
-                    "El estudiante %s ha subido el entregable \"%s\" para el proyecto \"%s\". Revisa el entregable en la sección de evaluación.",
-                    estudiante.getUsuario().getNombre(),
-                    titulo,
-                    proyecto.getTitulo()
-            );
-            emailService.enviarCorreoNotificacion(mypeEmail, emailTitulo, mensaje, mypeNombre);
-        } catch (Exception e) {
-            log.error("Error al enviar email a MYPE por nuevo entregable: {}", e.getMessage());
+        Entregable entregable;
+        boolean esNuevo = false;
+
+        if (entregableId != null) {
+            // ✅ ACTUALIZAR entregable existente
+            entregable = entregableRepository.findById(entregableId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Entregable no encontrado"));
+
+            // Verificar que el entregable pertenece al proyecto (y que el estudiante está en el proyecto)
+            if (!entregable.getProyecto().getId().equals(proyectoId)) {
+                throw new BusinessException("El entregable no pertenece a este proyecto", HttpStatus.FORBIDDEN);
+            }
+            // Opcional: verificar que el estudiante esté confirmado (ya se validó arriba)
+
+            // Eliminar archivo anterior si existe
+            if (entregable.getArchivo() != null && !entregable.getArchivo().isEmpty()) {
+                try {
+                    s3Service.eliminarArchivo(entregable.getArchivo());
+                    log.debug("Archivo anterior eliminado de S3: {}", entregable.getArchivo());
+                } catch (Exception e) {
+                    log.warn("No se pudo eliminar archivo anterior de S3: {}", e.getMessage());
+                }
+            }
+
+            // Actualizar campos
+            entregable.setArchivo(archivoUrl);
+            entregable.setDescripcion(descripcion);
+            entregable.setFechaEntrega(LocalDateTime.now());
+            entregable.setEstado(EstadoEntregable.PENDIENTE);
+            entregable.setSubidoPor(usuario);
+            entregable = entregableRepository.save(entregable);
+            log.info("Entregable actualizado ID: {}", entregable.getId());
+        } else {
+            // ✅ CREAR NUEVO
+            entregable = Entregable.builder()
+                    .proyecto(proyecto)
+                    .estudiante(estudiante)
+                    .titulo(titulo)
+                    .descripcion(descripcion)
+                    .archivo(archivoUrl)
+                    .subidoPor(usuario)
+                    .build();
+            entregable = entregableRepository.save(entregable);
+            esNuevo = true;
+            log.info("Nuevo entregable creado ID: {}", entregable.getId());
         }
         notificacionService.crearNotificacion(
                 proyecto.getMype().getUsuario(),
