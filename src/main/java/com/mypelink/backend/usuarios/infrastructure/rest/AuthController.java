@@ -40,8 +40,10 @@ public class AuthController {
     }
 
     @PostMapping("/register/mype")
-    public ResponseEntity<AuthResponse> registerMype(@Valid @RequestBody RegisterMypeRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(authService.registerMype(request));
+    public ResponseEntity<Map<String, String>> registerMype(@Valid @RequestBody RegisterMypeRequest request) {
+        authService.registerMype(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(Map.of("mensaje", "Registro exitoso. Su cuenta está pendiente de aprobación."));
     }
 
     @PostMapping("/login")

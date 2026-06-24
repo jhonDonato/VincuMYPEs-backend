@@ -3,8 +3,12 @@ package com.mypelink.backend.auth.integration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mypelink.backend.auth.recovery.application.service.EmailService;
 import com.mypelink.backend.shared.infrastructure.websocket.WebSocketNotificationService;
+import com.mypelink.backend.usuarios.domain.model.EstadoMype;
+import com.mypelink.backend.usuarios.domain.model.Mype;
 import com.mypelink.backend.usuarios.domain.model.Role;
+import com.mypelink.backend.usuarios.domain.repository.MypeRepository;
 import com.mypelink.backend.usuarios.domain.repository.RoleRepository;
+import com.mypelink.backend.usuarios.domain.repository.UsuarioRepository;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,6 +44,12 @@ class AuthIntegracionTest {
 
     @Autowired
     private EntityManager em;
+
+    @Autowired
+    private UsuarioRepository usuarioRepository;
+
+    @Autowired
+    private MypeRepository mypeRepository;
 
     @MockitoBean
     private EmailService emailService;
@@ -78,8 +88,7 @@ class AuthIntegracionTest {
                                  "telefono":"999333444","nombreComercial":"Integ SAC","razonSocial":"Integ SAC",
                                  "ruc":"20123456789","rubro":"Tecnologia","direccion":"Av. Principal"}"""))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.token").exists())
-                .andExpect(jsonPath("$.rol").value("MYPE"));
+                .andExpect(jsonPath("$.mensaje").exists());
     }
 
     @Test
@@ -91,6 +100,12 @@ class AuthIntegracionTest {
                                  "telefono":"999555666","nombreComercial":"Login SAC","razonSocial":"Login SAC",
                                  "ruc":"20555555555","rubro":"Servicios","direccion":"Av. 123"}"""))
                 .andExpect(status().isCreated());
+        em.flush();
+
+        var usuario = usuarioRepository.findByEmailWithRole("mype.login2@email.com").orElseThrow();
+        var mype = mypeRepository.findByUsuarioId(usuario.getId()).orElseThrow();
+        mype.setEstado(EstadoMype.APROBADO);
+        mypeRepository.save(mype);
         em.flush();
 
         mockMvc.perform(post("/api/auth/login")
@@ -113,17 +128,17 @@ class AuthIntegracionTest {
 
     @Test
     void refreshToken_Success() throws Exception {
-        var json = mockMvc.perform(post("/api/auth/register/mype")
+        var json = mockMvc.perform(post("/api/auth/register/estudiante")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"nombre":"Mype Refresh2","email":"mype.refresh2@email.com","password":"Pass@1234",
-                                 "telefono":"999777888","nombreComercial":"Refresh SAC","razonSocial":"Refresh SAC",
-                                 "ruc":"20777777777","rubro":"Consultoria","direccion":"Av. 456"}"""))
+                                {"dni":"22222222","nombre":"Est Refresh","email":"est.refresh@upn.pe",
+                                 "password":"Pass@1234","telefono":"999777888","codigoEstudiante":"N00222222",
+                                 "carrera":"Ing. Sistemas","universidad":"UPN"}"""))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
         em.flush();
         var response = objectMapper.readValue(json, Map.class);
         var refreshToken = response.get("refreshToken");
-        if (refreshToken == null) return; // skip if no refresh token
+        if (refreshToken == null) return;
 
         mockMvc.perform(post("/api/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -134,12 +149,12 @@ class AuthIntegracionTest {
 
     @Test
     void logout_Success() throws Exception {
-        var json = mockMvc.perform(post("/api/auth/register/mype")
+        var json = mockMvc.perform(post("/api/auth/register/estudiante")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"nombre":"Mype Logout2","email":"mype.logout2@email.com","password":"Pass@1234",
-                                 "telefono":"999000111","nombreComercial":"Logout SAC","razonSocial":"Logout SAC",
-                                 "ruc":"20888888888","rubro":"Comercio","direccion":"Av. 789"}"""))
+                                {"dni":"33333333","nombre":"Est Logout","email":"est.logout@upn.pe",
+                                 "password":"Pass@1234","telefono":"999000111","codigoEstudiante":"N00333333",
+                                 "carrera":"Ing. Sistemas","universidad":"UPN"}"""))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
         em.flush();
         var token = objectMapper.readValue(json, Map.class).get("token");

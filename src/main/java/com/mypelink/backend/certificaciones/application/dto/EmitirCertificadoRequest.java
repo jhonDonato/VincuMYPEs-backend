@@ -11,6 +11,7 @@ public record EmitirCertificadoRequest(
         String descripcionCertificado,
         String firmaBase64,
         String gerenteNombre,
+        String cargoRepresentante,
         // ✅ Asegurar que estos campos existen
         String proyectoTitulo,
         String estudianteNombre,

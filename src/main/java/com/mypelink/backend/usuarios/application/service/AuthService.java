@@ -5,6 +5,7 @@ import com.mypelink.backend.auth.recovery.domain.model.PasswordReset;
 import com.mypelink.backend.auth.recovery.domain.repository.PasswordResetRepository;
 import com.mypelink.backend.shared.application.service.ConfiguracionService;
 import com.mypelink.backend.shared.infrastructure.exception.BusinessException;
+import com.mypelink.backend.shared.infrastructure.exception.MypeEstadoException;
 import com.mypelink.backend.shared.infrastructure.jwt.JwtService;
 import com.mypelink.backend.usuarios.application.dto.*;
 import com.mypelink.backend.usuarios.domain.model.*;
@@ -199,9 +200,10 @@ public class AuthService {
                 .ruc(request.ruc())
                 .rubro(request.rubro())
                 .direccion(request.direccion())
+                .estado(EstadoMype.PENDIENTE)
                 .build());
 
-        return buildAuthResponseSinRefresh(usuario, role.getNombre());
+        return null;
     }
 
     public AuthResponse login(LoginRequest request) {
@@ -229,6 +231,17 @@ public class AuthService {
         if (configuracionService.isModoMantenimiento()
                 && !usuario.getRol().getNombre().equals("ROLE_ADMIN")) {
             throw new BusinessException("Sistema en mantenimiento.", HttpStatus.SERVICE_UNAVAILABLE);
+        }
+
+        if (usuario.getRol().getNombre().equals("ROLE_MYPE")) {
+            Mype mype = mypeRepository.findByUsuarioId(usuario.getId())
+                    .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+            if (mype.getEstado() == EstadoMype.PENDIENTE) {
+                throw new MypeEstadoException("MYPE_PENDIENTE");
+            }
+            if (mype.getEstado() == EstadoMype.RECHAZADO) {
+                throw new MypeEstadoException("MYPE_RECHAZADO");
+            }
         }
 
         long refreshExp = request.rememberMe() ? refreshExpirationRemember : refreshExpiration;

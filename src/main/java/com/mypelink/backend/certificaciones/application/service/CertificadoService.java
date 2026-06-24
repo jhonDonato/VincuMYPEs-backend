@@ -107,6 +107,7 @@ public class CertificadoService {
                     .tituloCertificado(request.tituloCertificado())
                     .descripcionCertificado(request.descripcionCertificado())
                     .gerenteNombre(request.gerenteNombre())
+                    .cargoRepresentante(request.cargoRepresentante())
                     .firmaUrl(firmaUrlS3) // ✅ Guarda la URL de S3 (corta)
                     .emitidoPor(usuarioMype)
                     .build();
@@ -169,7 +170,7 @@ public class CertificadoService {
     }
 
     @Transactional
-    public void enviarCertificado(Long certificadoId, String emailMype) {
+    public void enviarCertificado(Long certificadoId, String emailMype, String pdfBase64) {
         Certificado certificado = certificadoRepository.findById(certificadoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Certificado no encontrado", certificadoId));
 
@@ -181,6 +182,9 @@ public class CertificadoService {
             throw new BusinessException("Este certificado ya ha sido enviado al estudiante");
         }
 
+        if (pdfBase64 != null && !pdfBase64.isBlank()) {
+            certificado.setPdfBase64(pdfBase64);
+        }
         certificado.setFechaEnvio(LocalDateTime.now());
         certificadoRepository.save(certificado);
 
@@ -236,8 +240,11 @@ public class CertificadoService {
                 c.getFechaEnvio(),
                 // ✅ NUEVOS CAMPOS
                 c.getGerenteNombre(),
+                c.getCargoRepresentante(),
                 c.getFirmaUrl(),
-                c.getProyecto().getMype().getNombreRepresentante() // Si existe este campo
+                c.getProyecto().getMype().getNombreRepresentante(),
+                c.getProyecto().getMype().getRuc(),
+                c.getPdfBase64()
         );
     }
 }

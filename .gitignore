@@ -36,3 +36,7 @@ application.properties
 .env
 .fake
 CLAUDE.md
+
+# Agregar al final del archivo
+echo "" >> .gitignore
+echo "exception_log.txt" >> .gitignore

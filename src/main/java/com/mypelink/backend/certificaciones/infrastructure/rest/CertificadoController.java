@@ -3,6 +3,7 @@ package com.mypelink.backend.certificaciones.infrastructure.rest;
 import com.mypelink.backend.certificaciones.application.dto.CertificadoAdminResponse;
 import com.mypelink.backend.certificaciones.application.dto.CertificadoResponse;
 import com.mypelink.backend.certificaciones.application.dto.EmitirCertificadoRequest;
+import com.mypelink.backend.certificaciones.application.dto.EnviarConPdfRequest;
 import com.mypelink.backend.certificaciones.application.service.CertificadoService;
 import com.mypelink.backend.certificaciones.domain.model.Certificado;
 import com.mypelink.backend.certificaciones.domain.repository.CertificadoRepository;
@@ -155,9 +156,11 @@ public class CertificadoController {
     @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
     public ResponseEntity<Void> enviar(
             @PathVariable Long id,
+            @RequestBody(required = false) EnviarConPdfRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
-        certificadoService.enviarCertificado(id, userDetails.getUsername());
-        return ResponseEntity.noContent().build();
+        String pdfBase64 = request != null ? request.pdfBase64() : null;
+        certificadoService.enviarCertificado(id, userDetails.getUsername(), pdfBase64);
+        return ResponseEntity.ok().build();
     }
 
     @DeleteMapping("/{id}")

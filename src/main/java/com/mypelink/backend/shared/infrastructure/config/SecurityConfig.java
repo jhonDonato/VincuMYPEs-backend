@@ -42,13 +42,14 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        // ✅ RUTAS PÚBLICAS (sin autenticación)
+                        .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/reniec/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/configuracion/estado").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/proyectos/{id}").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/proyectos").permitAll()
-
+                        // ✅ FIRMA: permitAll() porque la autenticación se hace por query param
+                        .requestMatchers(HttpMethod.GET, "/api/certificados/*/firma").permitAll()
                         // ✅ RUTAS QUE REQUIEREN AUTENTICACIÓN
                         .requestMatchers("/api/proyectos/**").authenticated()
                         .requestMatchers("/api/estudiantes/**").authenticated()
@@ -58,15 +59,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/tipos-proyecto/**").authenticated()
                         .requestMatchers("/api/mensajes/**").authenticated()
                         .requestMatchers("/api/mypes/**").authenticated()
-
-                        // ✅ FIRMA: permitAll() porque la autenticación se hace por query param
-                        .requestMatchers(HttpMethod.GET, "/api/certificados/*/firma").permitAll()
                         .requestMatchers("/api/certificados/**").authenticated()
-
                         .anyRequest().authenticated()
                 )
-                .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(maintenanceFilter, JwtAuthFilter.class)
