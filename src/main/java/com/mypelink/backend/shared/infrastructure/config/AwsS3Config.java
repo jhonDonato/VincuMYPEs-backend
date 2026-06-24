@@ -7,6 +7,10 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
+import software.amazon.awssdk.core.retry.RetryPolicy;
+import java.time.Duration;
+
 
 @Configuration
 public class AwsS3Config {
@@ -26,6 +30,13 @@ public class AwsS3Config {
         return S3Client.builder()
                 .region(Region.of(region))
                 .credentialsProvider(StaticCredentialsProvider.create(credentials))
+                .overrideConfiguration(
+                        ClientOverrideConfiguration.builder()
+                                .apiCallAttemptTimeout(Duration.ofMinutes(2))
+                                .apiCallTimeout(Duration.ofMinutes(3))
+                                .retryPolicy(RetryPolicy.builder().numRetries(3).build())
+                                .build()
+                )
                 .build();
     }
 }

@@ -227,6 +227,7 @@ public class EntregableService {
         entregable.setObservaciones(request.observaciones());
         var saved = entregableRepository.save(entregable);
 
+        // Notificaciones
         notificacionService.crearNotificacion(
                 entregable.getEstudiante().getUsuario(),
                 "Tu entregable fue revisado",
@@ -242,7 +243,7 @@ public class EntregableService {
                             + entregable.getProyecto().getTitulo() + "\" fue marcado como "
                             + request.estado().name()
                             + (request.observaciones() != null && !request.observaciones().isBlank()
-                                ? ". Observaciones: " + request.observaciones() : "")
+                            ? ". Observaciones: " + request.observaciones() : "")
                             + ".\n\nInicia sesión para ver el detalle: http://localhost:5173/login",
                     entregable.getEstudiante().getUsuario().getNombre()
             );
@@ -250,6 +251,17 @@ public class EntregableService {
             log.error("Error al enviar email al estudiante sobre revisión de entregable: {}", e.getMessage());
         }
 
+        // ✅ Validación de delegado ANTES de calcular todo
+        if (request.estado() == EstadoEntregable.APROBADO
+                && proyecto.getEstado() != WorkflowEstado.COMPLETADO
+                && proyecto.getEstado() == WorkflowEstado.EN_VOTACION_DELEGADO) {
+            throw new BusinessException(
+                    "El equipo aún no ha elegido un delegado. No se puede completar el proyecto hasta que la votación haya finalizado.",
+                    HttpStatus.BAD_REQUEST
+            );
+        }
+
+        // Verificar si todos los entregables están completos
         if (request.estado() == EstadoEntregable.APROBADO
                 && proyecto.getEstado() != WorkflowEstado.COMPLETADO) {
             List<String> sugeridos = obtenerEntregablesSugeridos(proyecto);

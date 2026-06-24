@@ -141,7 +141,6 @@ public class VotacionService {
             throw new BusinessException("Ya has votado en esta elección");
         }
 
-
         Estudiante candidato = estudianteRepository.findById(request.candidatoId())
                 .orElseThrow(() -> new ResourceNotFoundException("Estudiante", request.candidatoId()));
 
@@ -160,6 +159,7 @@ public class VotacionService {
                 .candidato(candidato)
                 .build());
 
+        // ✅ SOLO VERIFICAMOS SI TODOS VOTARON (sin mayoría automática)
         List<Postulacion> confirmados = postulacionRepository
                 .findByProyectoIdAndEstadoWithDetails(proyectoId, EstadoPostulacion.CONFIRMADO);
 
@@ -171,9 +171,7 @@ public class VotacionService {
 
         return buildVotacionResponse(votacion, votante.getId());
     }
-    // ═══════════════════════════════════════════════════════════
-    // PROPONERSE COMO CANDIDATO A DELEGADO
-    // ═══════════════════════════════════════════════════════════
+
     @Transactional
     public VotacionResponse proponerseComoCandidato(Long proyectoId, String emailEstudiante) {
         Usuario usuario = usuarioRepository.findByEmailWithRole(emailEstudiante)
@@ -230,9 +228,6 @@ public class VotacionService {
         return buildVotacionResponse(votacion, estudianteId);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // FINALIZAR VOTACIÓN Y ELEGIR GANADOR
-    // ═══════════════════════════════════════════════════════════
     @Transactional
     public VotacionResponse finalizarVotacion(VotacionDelegado votacion) {
         Proyecto proyecto = votacion.getProyecto();
@@ -262,7 +257,6 @@ public class VotacionService {
             }
         }
 
-        // ✅ LÓGICA DE EMPATE (sin cambios)
         if (empate) {
             final long maxVotosFinal = maxVotos;
             List<Long> empatados = conteo.entrySet().stream()
@@ -289,91 +283,31 @@ public class VotacionService {
             postulacionRepository.save(p);
         }
 
-        // Marcar ganador
         Postulacion postulacionGanadora = postulacionRepository
                 .findByProyectoIdAndEstudianteId(proyecto.getId(), ganadorId)
                 .orElseThrow(() -> new BusinessException("Error al encontrar al ganador"));
         postulacionGanadora.setEsDelegado(true);
         postulacionRepository.save(postulacionGanadora);
 
-        // Actualizar votación
         votacion.setPostulacionGanadora(postulacionGanadora);
         votacion.setEstado(FaseVotacion.COMPLETADA);
         votacionRepository.save(votacion);
 
         proyecto.setFaseVotacion(FaseVotacion.COMPLETADA);
-        // ─────────────────────────────────────────────────────────────
-        // ✅ NUEVO: Detección de inactividad y cambio de estado
-        // ─────────────────────────────────────────────────────────────
+        proyecto.setEstado(WorkflowEstado.EN_DESARROLLO);
+        proyectoRepository.save(proyecto);
+
+        // Crear chats grupales
+        try {
+            chatGrupalService.crearChatsParaProyecto(proyecto.getId());
+        } catch (Exception e) {
+            log.error("Error al crear chats para proyecto " + proyecto.getId() + ": " + e.getMessage(), e);
+        }
+
+        // Notificaciones
         List<Postulacion> confirmados = postulacionRepository
                 .findByProyectoIdAndEstadoWithDetails(proyecto.getId(), EstadoPostulacion.CONFIRMADO);
 
-        Set<Long> idsQueVotaron = votos.stream()
-                .map(v -> v.getVotante().getId())
-                .collect(Collectors.toSet());
-
-        List<Postulacion> noVotaron = confirmados.stream()
-                .filter(p -> !idsQueVotaron.contains(p.getEstudiante().getId()))
-                .toList();
-
-        if (!noVotaron.isEmpty()) {
-            // Hay inactividad: el proyecto pasa a revisión del admin
-            proyecto.setEstado(WorkflowEstado.PENDIENTE_ADMIN);
-            proyectoRepository.save(proyecto);
-
-            // Notificar a todos los administradores
-            List<Usuario> admins = usuarioRepository.findAll().stream()
-                    .filter(u -> u.getRol().getNombre().equals("ROLE_ADMIN"))
-                    .toList();
-            String nombresNoVotaron = noVotaron.stream()
-                    .map(p -> p.getEstudiante().getUsuario().getNombre())
-                    .collect(Collectors.joining(", "));
-
-            for (Usuario admin : admins) {
-                notificacionService.crearNotificacion(
-                        admin,
-                        "⚠️ Proyecto requiere atención",
-                        "El proyecto \"" + proyecto.getTitulo() + "\" tiene estudiantes que no votaron: "
-                                + nombresNoVotaron + ". Debes decidir cómo continuar.",
-                        TipoNotificacion.PROYECTO,
-                        "/admin/proyectos"
-                );
-                try {
-                    emailService.enviarCorreoNotificacion(
-                            admin.getEmail(),
-                            "Proyecto en revisión: " + proyecto.getTitulo(),
-                            "Los siguientes estudiantes no participaron en la votación del delegado: "
-                                    + nombresNoVotaron + ". Ingresa al panel de administración para decidir.",
-                            admin.getNombre()
-                    );
-                } catch (Exception e) {
-                    log.error("Error enviando correo a admin " + admin.getEmail() + ": " + e.getMessage(), e);
-                }
-            }
-
-            // Notificar a los estudiantes que el proyecto está en revisión
-            for (Postulacion p : confirmados) {
-                notificacionService.crearNotificacion(
-                        p.getEstudiante().getUsuario(),
-                        "⏳ Proyecto en revisión",
-                        "El proyecto \"" + proyecto.getTitulo() + "\" está pendiente de revisión por el administrador.",
-                        TipoNotificacion.PROYECTO,
-                        "/workspace/" + proyecto.getId()
-                );
-            }
-        } else {
-            // Todos votaron: el proyecto puede comenzar
-            proyecto.setEstado(WorkflowEstado.EN_DESARROLLO);
-            proyectoRepository.save(proyecto);
-            try {
-                chatGrupalService.crearChatsParaProyecto(proyecto.getId());
-            } catch (Exception e) {
-                log.error("Error al crear chats para proyecto " + proyecto.getId() + ": " + e.getMessage(), e);
-            }
-        }
-        // ─────────────────────────────────────────────────────────────
-
-        // Notificaciones al delegado
         notificacionService.crearNotificacion(
                 postulacionGanadora.getEstudiante().getUsuario(),
                 "🎉 ¡Eres el delegado del equipo!",
@@ -382,7 +316,6 @@ public class VotacionService {
                 "/workspace/" + proyecto.getId()
         );
 
-        // Notificaciones al resto del equipo
         for (Postulacion p : confirmados) {
             if (!p.getEstudiante().getId().equals(ganadorId)) {
                 notificacionService.crearNotificacion(
@@ -396,7 +329,6 @@ public class VotacionService {
             }
         }
 
-        // Notificar a la MYPE
         notificacionService.crearNotificacion(
                 proyecto.getMype().getUsuario(),
                 "✅ Delegado elegido",
