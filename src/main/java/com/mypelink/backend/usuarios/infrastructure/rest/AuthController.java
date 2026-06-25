@@ -35,8 +35,10 @@ public class AuthController {
     }
 
     @PostMapping("/register/estudiante")
-    public ResponseEntity<AuthResponse> registerEstudiante(@Valid @RequestBody RegisterEstudianteRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(authService.registerEstudiante(request));
+    public ResponseEntity<AuthResponse> registerEstudiante(
+            @Valid @RequestBody RegisterEstudianteRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(authService.registerEstudiante(request));
     }
 
     @PostMapping("/register/mype")

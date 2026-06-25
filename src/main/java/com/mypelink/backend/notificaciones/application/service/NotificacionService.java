@@ -77,20 +77,18 @@ public class NotificacionService {
         NotificacionResponse response = mapToResponse(notificacion);
         webSocketService.enviarNotificacion(usuario.getId(), response);
 
-        // Enviar correo SOLO a estudiantes
-        if (usuario.getRol().getNombre().equals("ESTUDIANTE")) {
-            try {
-                String nombreUsuario = usuario.getNombre() != null ? usuario.getNombre() : "Estudiante";
-                emailService.enviarCorreoNotificacion(
-                        usuario.getEmail(),
-                        titulo,
-                        mensaje,
-                        nombreUsuario
-                );
-                log.info("📧 Correo enviado al estudiante: {}", usuario.getEmail());
-            } catch (Exception e) {
-                log.error("⚠️ Error enviando correo a {}: {}", usuario.getEmail(), e.getMessage());
-            }
+        // ✅ ENVIAR CORREO A TODOS LOS USUARIOS (no solo estudiantes)
+        try {
+            String nombreUsuario = usuario.getNombre() != null ? usuario.getNombre() : "Usuario";
+            emailService.enviarCorreoNotificacion(
+                    usuario.getEmail(),
+                    titulo,
+                    mensaje,
+                    nombreUsuario
+            );
+            log.info("📧 Correo enviado a: {} (rol: {})", usuario.getEmail(), usuario.getRol().getNombre());
+        } catch (Exception e) {
+            log.error("⚠️ Error enviando correo a {}: {}", usuario.getEmail(), e.getMessage());
         }
     }
 

@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -83,45 +84,80 @@ public class AuthService {
 
     @Transactional
     public AuthResponse registerEstudiante(RegisterEstudianteRequest request) {
+        String Email = request.email().toLowerCase().trim();
         if (configuracionService.isModoMantenimiento()) {
             throw new BusinessException(
                     "Sistema en mantenimiento. Solo administradores pueden ingresar.",
                     HttpStatus.SERVICE_UNAVAILABLE);
         }
+
+        // ✅ Verificación OTP (si está habilitada)
         if (verificationEnabled) {
+            // Validar que el email sea institucional @upn.pe
             if (!request.email().toLowerCase().endsWith("@upn.pe")) {
                 throw new BusinessException("Solo se permiten correos institucionales @upn.pe");
             }
-            if (request.codigoEstudiante() == null || request.codigoEstudiante().isBlank()) {
-                throw new BusinessException("El código de estudiante es obligatorio");
+
+            if (request.otpCode() == null || request.otpCode().isBlank()) {
+                throw new BusinessException("Debes ingresar el código de verificación");
+            }
+
+            String emailNormalizado = request.email().toLowerCase().trim();
+            boolean otpValido = passwordResetRepository
+                    .findByEmailAndOtpCodeAndUsedFalseAndExpiresAtAfter(emailNormalizado, request.otpCode(), LocalDateTime.now())
+                    .map(reset -> {
+                        reset.setUsed(true);
+                        passwordResetRepository.save(reset);
+                        return true;
+                    })
+                    .orElse(false);
+
+            if (!otpValido) {
+                throw new BusinessException("El código de verificación es inválido o ha expirado");
             }
         }
+
+        // ─── Validaciones de campos ──────────────────────────────────────────
+
+        // Código de estudiante (formato N00XXXXXX)
         if (request.codigoEstudiante() != null && !request.codigoEstudiante().matches("^N00\\d{6}$")) {
             throw new BusinessException("El código de estudiante debe tener el formato N00XXXXXX");
         }
+
+        // Verificar email único
         if (usuarioRepository.existsByEmail(request.email())) {
             throw new BusinessException("El correo electrónico ya está registrado en otra cuenta.");
         }
+
+        // DNI
         if (request.dni() == null || request.dni().isBlank()) {
             throw new BusinessException("El DNI es obligatorio");
         }
-        if (request.dni() != null && !request.dni().matches("\\d{8}")) {
+        if (!request.dni().matches("\\d{8}")) {
             throw new BusinessException("El DNI debe tener 8 dígitos");
         }
+
+        // Código de estudiante único
         if (request.codigoEstudiante() != null &&
                 estudianteRepository.existsByCodigoEstudiante(request.codigoEstudiante())) {
             throw new BusinessException("Este código de estudiante ya ha sido utilizado.");
         }
+
+        // Teléfono
         if (request.telefono() == null || !request.telefono().matches("\\d{9}")) {
             throw new BusinessException("El teléfono debe tener 9 dígitos");
         }
         if (usuarioRepository.existsByTelefono(request.telefono())) {
             throw new BusinessException("El número de teléfono ya está registrado");
         }
+
+        // Contraseña
         if (request.password() == null || request.password().isBlank()) {
             throw new BusinessException("La contraseña es obligatoria");
         }
         validatePasswordStrength(request.password());
+
+        // ─── Crear usuario ────────────────────────────────────────────────────
 
         Role role = roleRepository.findByNombre("ROLE_ESTUDIANTE")
                 .orElseThrow(() -> new BusinessException(
@@ -133,8 +169,11 @@ public class AuthService {
                 .dni(request.dni())
                 .password(passwordEncoder.encode(request.password()))
                 .telefono(request.telefono())
+                .emailVerified(true)  // ✅ Marcar como verificado (OTP validado)
                 .rol(role)
                 .build());
+
+        // ─── Crear perfil de estudiante ──────────────────────────────────────
 
         estudianteRepository.save(Estudiante.builder()
                 .usuario(usuario)
@@ -321,6 +360,7 @@ public class AuthService {
 
     @Transactional
     public void sendVerificationOtp(String email) {
+        email = email.toLowerCase().trim();
         if (configuracionService.isModoMantenimiento()) {
             throw new BusinessException(
                     "Sistema en mantenimiento. Solo administradores pueden ingresar.",
@@ -340,21 +380,31 @@ public class AuthService {
     }
 
     public boolean verifyOtp(String email, String otp) {
-        if (configuracionService.isModoMantenimiento()) {
-            throw new BusinessException(
-                    "Sistema en mantenimiento. Solo administradores pueden ingresar.",
-                    HttpStatus.SERVICE_UNAVAILABLE);
-        }
+        email = email.toLowerCase().trim();
         if (!verificationEnabled) return true;
 
-        return passwordResetRepository
-                .findByEmailAndOtpCodeAndUsedFalseAndExpiresAtAfter(email, otp, LocalDateTime.now())
-                .map(reset -> {
-                    reset.setUsed(true);
-                    passwordResetRepository.save(reset);
-                    return true;
-                })
-                .orElse(false);
+        LocalDateTime now = LocalDateTime.now();
+        log.info("🔍 Verificando OTP - email: {}, otp: {}, ahora: {}", email, otp, now);
+
+        Optional<PasswordReset> optional = passwordResetRepository
+                .findByEmailAndOtpCodeAndUsedFalseAndExpiresAtAfter(email, otp, now);
+
+        if (optional.isPresent()) {
+            PasswordReset reset = optional.get();
+            log.info("✅ OTP encontrado - expiresAt: {}, usado: {}", reset.getExpiresAt(), reset.getUsed());
+            reset.setUsed(true);
+            passwordResetRepository.save(reset);
+            return true;
+        } else {
+            log.warn("❌ OTP NO encontrado para email: {}, otp: {}", email, otp);
+            // Buscar registros para depurar
+            List<PasswordReset> all = passwordResetRepository.findByEmail(email);
+            log.warn("📋 Registros en BD para ese email: {}", all.stream()
+                    .map(r -> String.format("id=%d, otp=%s, expires=%s, used=%s",
+                            r.getId(), r.getOtpCode(), r.getExpiresAt(), r.getUsed()))
+                    .collect(Collectors.joining(", ")));
+            return false;
+        }
     }
 
     private void checkLoginAttempts(String email) {

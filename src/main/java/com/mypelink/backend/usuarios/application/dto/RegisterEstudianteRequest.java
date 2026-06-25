@@ -12,5 +12,6 @@ public record RegisterEstudianteRequest(
         String telefono,
         String codigoEstudiante,
         String carrera,
-        String universidad
+        String universidad,
+        String otpCode
 ) {}

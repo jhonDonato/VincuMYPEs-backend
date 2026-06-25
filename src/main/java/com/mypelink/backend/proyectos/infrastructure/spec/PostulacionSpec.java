@@ -18,11 +18,6 @@ public final class PostulacionSpec {
 
     private PostulacionSpec() {}
 
-    /**
-     * Builds a composed Specification for dynamic filtering of Postulacion.
-     * Fetch joins are added only on the data query (not the count query Spring
-     * generates for pagination), keyed on query.getResultType() != Long.class.
-     */
     public static Specification<Postulacion> build(
             Long proyectoId,
             List<EstadoPostulacion> estados,

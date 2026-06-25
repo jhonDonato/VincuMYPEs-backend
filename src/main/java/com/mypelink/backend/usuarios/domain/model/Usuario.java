@@ -52,6 +52,7 @@ public class Usuario {
     @Column(name = "ultima_sesion")
     private LocalDateTime ultimaSesion;
 
+
     @PrePersist
     protected void onCreate() {
         this.fechaRegistro = LocalDateTime.now();
