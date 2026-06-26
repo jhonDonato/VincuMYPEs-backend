@@ -6388,6 +6388,7 @@ Caused by: org.apache.tomcat.util.http.fileupload.impl.FileSizeLimitExceededExce
 	at org.apache.tomcat.util.http.fileupload.FileUploadBase.parseRequest(FileUploadBase.java:468)
 	at org.apache.catalina.connector.Request.parseParts(Request.java:2675)
 	... 114 more
+<<<<<<< Updated upstream
 ----- NEW EXCEPTION -----
 org.springframework.transaction.UnexpectedRollbackException: Transaction silently rolled back because it has been marked as rollback-only
 	at org.springframework.transaction.support.AbstractPlatformTransactionManager.processCommit(AbstractPlatformTransactionManager.java:804)
@@ -18940,3 +18941,5 @@ java.lang.IllegalStateException: ConfiguracionSistema no inicializada. Verifique
 	at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:491)
 	at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:63)
 	at java.base/java.lang.Thread.run(Thread.java:1583)
+=======
+>>>>>>> Stashed changes

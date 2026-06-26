@@ -13,7 +13,7 @@ import org.springframework.web.client.RestTemplate;
 @Slf4j
 public class ApisNetService {
 
-    @Value("${API_TOKEN}")
+    @Value("${API_TOKEN:d95e8a907176cba8a6831cd91524f4b8}")
     private String apiToken;
 
     private static final String BASE_URL =

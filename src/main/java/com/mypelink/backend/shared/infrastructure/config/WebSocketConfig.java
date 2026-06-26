@@ -38,8 +38,12 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
-                .setAllowedOrigins("http://localhost:5173");
-        // Sin .withSockJS()
+                .setAllowedOrigins(
+                        "https://mypelink.com",
+                        "https://www.mypelink.com",
+                        "http://localhost:5173"  // Para desarrollo
+                )
+                .withSockJS();  // Habilitar SockJS para fallback
     }
 
 

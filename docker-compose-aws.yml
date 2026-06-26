@@ -1,0 +1,168 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # MYSQL - Base de Datos
+  # ==========================================
+  mysql:
+    image: mysql:8.0
+    container_name: mypelink-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_INITDB_ARGS: "--character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci"
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - mypelink-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    command: --default-authentication-plugin=mysql_native_password --max_allowed_packet=64M
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # ==========================================
+  # BACKEND - Spring Boot
+  # ==========================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mypelink-backend:latest
+    container_name: mypelink-backend
+    restart: always
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: aws
+      DB_URL: jdbc:mysql://mysql:3306/${DB_NAME}?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=America/Lima
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      AWS_ACCESS_KEY: ${AWS_ACCESS_KEY}
+      AWS_SECRET_KEY: ${AWS_SECRET_KEY}
+      AWS_REGION: ${AWS_REGION}
+      AWS_BUCKET_NAME: ${AWS_BUCKET_NAME}
+      API_TOKEN: ${API_TOKEN}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_ENZO_NAME: ${ADMIN_ENZO_NAME}
+      ADMIN_ENZO_EMAIL: ${ADMIN_ENZO_EMAIL}
+      ADMIN_ENZO_PWD: ${ADMIN_ENZO_PWD}
+      ADMIN_ENZO_DNI: ${ADMIN_ENZO_DNI}
+      ADMIN_ENZO_TELEFONO: ${ADMIN_ENZO_TELEFONO}
+      ADMIN_ENZO_CODIGO: ${ADMIN_ENZO_CODIGO}
+      ADMIN_ENZO_CARRERA: ${ADMIN_ENZO_CARRERA}
+      ADMIN_ENZO_UNIVERSIDAD: ${ADMIN_ENZO_UNIVERSIDAD}
+      ADMIN_MARCO_NAME: ${ADMIN_MARCO_NAME}
+      ADMIN_MARCO_EMAIL: ${ADMIN_MARCO_EMAIL}
+      ADMIN_MARCO_PWD: ${ADMIN_MARCO_PWD}
+      ADMIN_MARCO_DNI: ${ADMIN_MARCO_DNI}
+      ADMIN_MARCO_TELEFONO: ${ADMIN_MARCO_TELEFONO}
+      ADMIN_MARCO_CODIGO: ${ADMIN_MARCO_CODIGO}
+      ADMIN_MARCO_CARRERA: ${ADMIN_MARCO_CARRERA}
+      ADMIN_MARCO_UNIVERSIDAD: ${ADMIN_MARCO_UNIVERSIDAD}
+      ADMIN_JHON_NAME: ${ADMIN_JHON_NAME}
+      ADMIN_JHON_EMAIL: ${ADMIN_JHON_EMAIL}
+      ADMIN_JHON_PWD: ${ADMIN_JHON_PWD}
+      ADMIN_JHON_DNI: ${ADMIN_JHON_DNI}
+      ADMIN_JHON_TELEFONO: ${ADMIN_JHON_TELEFONO}
+      ADMIN_JHON_CODIGO: ${ADMIN_JHON_CODIGO}
+      ADMIN_JHON_CARRERA: ${ADMIN_JHON_CARRERA}
+      ADMIN_JHON_UNIVERSIDAD: ${ADMIN_JHON_UNIVERSIDAD}
+      ADMIN_GIANPIERO_NAME: ${ADMIN_GIANPIERO_NAME}
+      ADMIN_GIANPIERO_EMAIL: ${ADMIN_GIANPIERO_EMAIL}
+      ADMIN_GIANPIERO_PWD: ${ADMIN_GIANPIERO_PWD}
+      ADMIN_GIANPIERO_DNI: ${ADMIN_GIANPIERO_DNI}
+      ADMIN_GIANPIERO_TELEFONO: ${ADMIN_GIANPIERO_TELEFONO}
+      ADMIN_GIANPIERO_CODIGO: ${ADMIN_GIANPIERO_CODIGO}
+      ADMIN_GIANPIERO_CARRERA: ${ADMIN_GIANPIERO_CARRERA}
+      ADMIN_GIANPIERO_UNIVERSIDAD: ${ADMIN_GIANPIERO_UNIVERSIDAD}
+      ADMIN_SEGUNDO_NAME: ${ADMIN_SEGUNDO_NAME}
+      ADMIN_SEGUNDO_EMAIL: ${ADMIN_SEGUNDO_EMAIL}
+      ADMIN_SEGUNDO_PWD: ${ADMIN_SEGUNDO_PWD}
+      ADMIN_SEGUNDO_DNI: ${ADMIN_SEGUNDO_DNI}
+      ADMIN_SEGUNDO_TELEFONO: ${ADMIN_SEGUNDO_TELEFONO}
+      ADMIN_SEGUNDO_CODIGO: ${ADMIN_SEGUNDO_CODIGO}
+      ADMIN_SEGUNDO_CARRERA: ${ADMIN_SEGUNDO_CARRERA}
+      ADMIN_SEGUNDO_UNIVERSIDAD: ${ADMIN_SEGUNDO_UNIVERSIDAD}
+    ports:
+      - "8080:8080"
+    networks:
+      - mypelink-network
+    volumes:
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
+
+  # ==========================================
+  # NGINX - Reverse Proxy con Cloudflare
+  # ==========================================
+  nginx:
+    image: nginx:alpine
+    container_name: mypelink-nginx
+    restart: always
+    depends_on:
+      - backend
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker/ssl:/etc/nginx/ssl:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - mypelink-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ==========================================
+  # PHPMYADMIN (Opcional - Gestión MySQL)
+  # ==========================================
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: mypelink-phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_ARBITRARY: 1
+      UPLOAD_LIMIT: 100M
+    ports:
+      - "8081:80"
+    depends_on:
+      - mysql
+    networks:
+      - mypelink-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+networks:
+  mypelink-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local
