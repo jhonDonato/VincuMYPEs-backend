@@ -75,8 +75,10 @@ public class SecurityConfig {
         configuration.setAllowedOrigins(List.of(
                 "https://www.linkuy.org.pe",
                 "https://linkuy.org.pe",
+                "https://mypelink.com",
+                "https://www.mypelink.com",
                 "http://localhost:5173"
-        ));       configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        ));      configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
 
