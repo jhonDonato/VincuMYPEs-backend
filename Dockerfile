@@ -1,64 +1,40 @@
 # ============================================
 # ETAPA 1: BUILD
 # ============================================
-FROM openjdk:21-jdk-slim AS build
+FROM eclipse-temurin:21-jdk-alpine AS build
 
 # Instalar Maven
-RUN apt-get update && apt-get install -y maven && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache maven
 
-# Establecer directorio de trabajo
 WORKDIR /app
-
-# Copiar pom.xml y descargar dependencias (caché)
 COPY pom.xml .
 RUN mvn dependency:go-offline -B
 
-# Copiar código fuente
 COPY src src
-COPY .env .env
+COPY .env.aws .env
 
-# Construir JAR
-RUN mvn clean package -DskipTests
+RUN mvn clean package -DskipTests -Dmaven.test.skip=true
 
 # ============================================
 # ETAPA 2: RUNTIME
 # ============================================
-FROM openjdk:21-jdk-slim
+FROM eclipse-temurin:21-jdk-alpine
 
-# Instalar herramientas
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
-
-# Crear usuario no root
-RUN groupadd -r mypelink && useradd -r -g mypelink mypelink
-
-# Crear directorios necesarios
+RUN apk add --no-cache curl
+RUN addgroup -g 1000 -S mypelink && adduser -u 1000 -S mypelink -G mypelink
 RUN mkdir -p /app/logs && chown -R mypelink:mypelink /app
 
-# Establecer directorio de trabajo
 WORKDIR /app
 
-# Copiar JAR desde build
 COPY --from=build /app/target/*.jar app.jar
-
-# Copiar .env (si existe)
-COPY .env .env
-
-# Cambiar propietario
+COPY .env.aws .env
 RUN chown mypelink:mypelink app.jar
 
-# Cambiar a usuario no root
 USER mypelink
 
-# Puerto de la aplicación
 EXPOSE 8080
 
-# Variables de entorno
 ENV SPRING_PROFILES_ACTIVE=aws
 ENV JAVA_OPTS="-Xmx512m -Xms256m -XX:+UseG1GC"
 
-# Healthcheck
-HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
-  CMD curl -f http://localhost:8080/actuator/health || exit 1
-
-# Comando de entrada
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
