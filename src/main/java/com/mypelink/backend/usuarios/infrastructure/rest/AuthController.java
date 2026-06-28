@@ -12,8 +12,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @RestController
@@ -113,5 +115,19 @@ public class AuthController {
         }
         boolean valid = authService.verifyOtp(email, otp);
         return ResponseEntity.ok(Map.of("valid", valid));
+    }
+
+    // ============================================================
+    // 🔧 ENDPOINT TEMPORAL PARA GENERAR HASH DE SPRING
+    // ============================================================
+    @GetMapping("/test-hash")
+    public ResponseEntity<Map<String, String>> testHash() {
+        BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+        String rawPassword = "admin123";
+        String hash = encoder.encode(rawPassword);
+        Map<String, String> response = new HashMap<>();
+        response.put("password", rawPassword);
+        response.put("hash", hash);
+        return ResponseEntity.ok(response);
     }
 }
