@@ -12,13 +12,15 @@ import org.springframework.stereotype.Service;
 public class EmailService {
 
     private final Resend resend;
+    private final String fromEmail;
 
-    @Value("${resend.from-email:onboarding@resend.dev}")
-    private String fromEmail;
-
-    public EmailService(@Value("${resend.api-key}") String apiKey) {
+    public EmailService(
+            @Value("${resend.api-key}") String apiKey,
+            @Value("${resend.from-email:onboarding@resend.dev}") String fromEmail) {
         this.resend = new Resend(apiKey);
+        this.fromEmail = fromEmail;
     }
+
 
     public void sendOtpEmail(String to, String otpCode, String subject) {
         try {
@@ -97,7 +99,7 @@ public class EmailService {
                     <h3 style="color: #0F1F3D; margin: 0 0 8px; font-size: 16px;">%s</h3>
                     <p style="color: #6B7280; margin: 0; font-size: 14px; line-height: 1.6;">%s</p>
                 </div>
-                <a href="http://localhost:5173/mis-postulaciones" style="display: inline-block; background: #1B6FE8; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">
+                <a href="https://www.linkuy.org.pe/mis-postulaciones" style="display: inline-block; background: #1B6FE8; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">
                     Ver en Linkuy
                 </a>
                 <p style="color: #9CA3AF; margin: 16px 0 0; font-size: 12px;">

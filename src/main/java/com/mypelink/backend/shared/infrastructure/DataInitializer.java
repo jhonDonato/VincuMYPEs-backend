@@ -115,6 +115,7 @@ public class DataInitializer implements CommandLineRunner {
                     .telefono(telefono)
                     .rol(rol)
                     .activo(true)
+                    .emailVerified(true)
                     .build();
             usuarioRepository.save(admin);
         }
