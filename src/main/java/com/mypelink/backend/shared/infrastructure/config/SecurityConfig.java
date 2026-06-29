@@ -5,6 +5,7 @@ import com.mypelink.backend.shared.infrastructure.jwt.JwtAuthFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
@@ -35,6 +36,9 @@ public class SecurityConfig {
     private final UserDetailsService userDetailsService;
     private final MaintenanceFilter maintenanceFilter;
 
+    @Value("${app.frontend.url:http://localhost:5173}")
+    private String frontendUrl;
+
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -42,6 +46,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/reniec/**").permitAll()
@@ -73,14 +78,30 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of(
+                frontendUrl,
                 "https://www.linkuy.org.pe",
                 "https://linkuy.org.pe",
                 "https://mypelink.com",
                 "https://www.mypelink.com",
                 "http://localhost:5173"
-        ));      configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("*"));
+        ));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of(
+                "Origin",
+                "Content-Type",
+                "Authorization",
+                "Accept",
+                "X-Requested-With",
+                "Access-Control-Request-Method",
+                "Access-Control-Request-Headers"
+        ));
+        configuration.setExposedHeaders(List.of("Authorization", "Content-Type"));
         configuration.setAllowCredentials(true);
+        configuration.setMaxAge(3600L);
+
+        // 🔍 LOG TEMPORAL
+        System.out.println("✅ CORS CONFIGURADO: " + configuration.getAllowedOrigins());
+        System.out.println("✅ MÉTODOS: " + configuration.getAllowedMethods());
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

@@ -8,6 +8,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -29,9 +30,22 @@ public class MaintenanceFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
 
-        // Endpoints que siempre deben funcionar (login, refresh, etc.)
         String path = request.getRequestURI();
+        String method = request.getMethod();
+
+        // 🔍 LOG TEMPORAL
+        System.out.println("🔍 MaintenanceFilter: " + method + " " + path);
+
+        // 🔥 AGREGAR: Ignorar preflight CORS
+        if (HttpMethod.OPTIONS.matches(method)) {
+            System.out.println("✅ MaintenanceFilter: Ignorando OPTIONS");
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // 🔥 MODIFICAR: Permitir TODOS los endpoints de auth (no solo login)
         if (path.equals("/api/auth/login")
+                || path.startsWith("/api/auth/")  // ← AGREGA ESTA LÍNEA
                 || path.equals("/api/configuracion/estado")
                 || path.startsWith("/error")) {
             filterChain.doFilter(request, response);

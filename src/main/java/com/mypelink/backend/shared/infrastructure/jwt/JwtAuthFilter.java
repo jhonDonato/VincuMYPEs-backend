@@ -6,6 +6,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -26,6 +27,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
+
+        // 🔍 LOG TEMPORAL
+        System.out.println("🔍 JwtAuthFilter: " + request.getMethod() + " " + request.getRequestURI());
+
+        // 🔥 IGNORAR PREFLIGHT CORS
+        if (HttpMethod.OPTIONS.matches(request.getMethod())) {
+            System.out.println("✅ JwtAuthFilter: Ignorando OPTIONS");
+            filterChain.doFilter(request, response);
+            return;
+        }
 
         final String authHeader = request.getHeader("Authorization");
 

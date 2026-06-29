@@ -7,6 +7,7 @@ import com.mypelink.backend.usuarios.domain.repository.MypeRepository;
 import com.mypelink.backend.usuarios.domain.repository.UsuarioRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +22,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
+@Slf4j
 public class AuthController {
 
     private final AuthService authService;
@@ -100,12 +102,27 @@ public class AuthController {
     }
 
     @PostMapping("/verify-email")
-    public ResponseEntity<?> sendVerificationOtp(@RequestParam String email) {
+    public ResponseEntity<?> sendVerificationOtp(@RequestBody Map<String, String> request) {
+        String email = request == null ? null : request.get("email");
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "El correo es requerido"));
+        }
+        email = email.toLowerCase().trim();
+
         if (!verificationEnabled) {
             return ResponseEntity.ok(Map.of("message", "Verificación desactivada"));
         }
-        authService.sendVerificationOtp(email);
-        return ResponseEntity.ok(Map.of("message", "Código enviado"));
+
+        try {
+            log.info("Recibida solicitud de envío OTP para email: {}", email);
+            authService.sendVerificationOtp(email);
+            log.info("OTP enviado exitosamente a: {}", email);
+            return ResponseEntity.ok(Map.of("message", "Código enviado"));
+        } catch (Exception e) {
+            log.error("Error al enviar OTP a {}: {}", email, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Error al enviar el código"));
+        }
     }
 
     @PostMapping("/confirm-email")
