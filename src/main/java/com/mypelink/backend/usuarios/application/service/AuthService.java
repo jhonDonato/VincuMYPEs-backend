@@ -169,7 +169,7 @@ public class AuthService {
                 .dni(request.dni())
                 .password(passwordEncoder.encode(request.password()))
                 .telefono(request.telefono())
-                .emailVerified(true)  // ✅ Marcar como verificado (OTP validado)
+                .emailVerified(true)
                 .rol(role)
                 .build());
 
@@ -229,6 +229,7 @@ public class AuthService {
                 .email(request.email())
                 .password(passwordEncoder.encode(request.password()))
                 .telefono(request.telefono())
+                .emailVerified(true)
                 .rol(role)
                 .build());
 
