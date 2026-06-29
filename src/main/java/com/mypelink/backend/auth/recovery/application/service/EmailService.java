@@ -74,7 +74,7 @@ public class EmailService {
                         </span>
                     </div>
                     <p style="color: #9CA3AF; margin: 0 0 8px; font-size: 12px;">
-                        Este código expira en <strong>10 minutos</strong>.
+                        Este código expira en <strong>2 minutos</strong>.
                     </p>
                     <p style="color: #9CA3AF; margin: 0; font-size: 12px;">
                         Si no solicitaste este código, ignora este mensaje.

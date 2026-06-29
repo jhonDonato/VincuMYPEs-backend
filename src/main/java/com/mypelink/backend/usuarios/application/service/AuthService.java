@@ -54,7 +54,7 @@ public class AuthService {
     @Value("${app.login.max-attempts:5}")
     private int maxAttempts;
 
-    @Value("${app.login.block-duration-minutes:10}")
+    @Value("${app.login.block-duration-minutes:2}")
     private long blockDurationMinutes;
 
     private final UsuarioRepository usuarioRepository;
@@ -375,7 +375,7 @@ public class AuthService {
         passwordResetRepository.save(PasswordReset.builder()
                 .email(email)
                 .otpCode(otp)
-                .expiresAt(LocalDateTime.now().plusMinutes(10))
+                .expiresAt(LocalDateTime.now().plusMinutes(2))
                 .build());
         emailService.sendOtpEmail(email, otp, "Verificación de correo - Linkuy");
     }
