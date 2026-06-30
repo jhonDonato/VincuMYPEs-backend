@@ -2,6 +2,7 @@
 package com.mypelink.backend.proyectos.application.service;
 
 import com.mypelink.backend.auth.recovery.application.service.EmailService;
+import com.mypelink.backend.certificaciones.domain.repository.CertificadoRepository;
 import com.mypelink.backend.ejecucion.domain.model.Entregable;
 import com.mypelink.backend.ejecucion.domain.repository.EntregableRepository;
 import com.mypelink.backend.notificaciones.application.service.NotificacionService;
@@ -73,6 +74,7 @@ public class ProyectoService {
         private final VotacionService votacionService;
         private final ChatGrupalService chatGrupalService;
         private final EmailService emailService;
+        private final CertificadoRepository certificadoRepository;
         @Value("${admin.notification.emails:}")
         private String adminEmails;
 
@@ -962,21 +964,21 @@ public class ProyectoService {
         @Transactional
         public ProyectoResponse completarProyecto(Long proyectoId, String emailMype) {
                 var usuario = usuarioRepository.findByEmailWithRole(emailMype)
-                                .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+                        .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
                 var mype = mypeRepository.findByUsuarioId(usuario.getId())
-                                .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+                        .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
                 var proyecto = proyectoRepository.findById(proyectoId)
-                                .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+                        .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
 
                 if (!proyecto.getMype().getId().equals(mype.getId())) {
-                        throw new BusinessException("No tienes permiso para completar este proyecto",
-                                        HttpStatus.FORBIDDEN);
+                        throw new BusinessException("No tienes permiso para completar este proyecto", HttpStatus.FORBIDDEN);
                 }
                 if (proyecto.getEstado() == WorkflowEstado.COMPLETADO) {
                         return toResponse(proyecto);
                 }
-                if (proyecto.getEstado() != WorkflowEstado.EN_DESARROLLO) {
-                        throw new BusinessException("Solo puedes completar proyectos que están en desarrollo");
+                if (proyecto.getEstado() != WorkflowEstado.EN_DESARROLLO &&
+                        proyecto.getEstado() != WorkflowEstado.EN_REVISION) {
+                        throw new BusinessException("Solo puedes completar proyectos que están en desarrollo o revisión");
                 }
 
                 List<Entregable> entregables = entregableRepository.findByProyectoIdWithDetails(proyectoId);
@@ -984,17 +986,18 @@ public class ProyectoService {
                 if (entregables.isEmpty()) {
                         throw new BusinessException("El proyecto no tiene entregables registrados");
                 }
+
                 boolean todosAprobados = entregables.stream()
-                                .allMatch(e -> e.getEstado() == EstadoEntregable.APROBADO);
+                        .allMatch(e -> e.getEstado() == EstadoEntregable.APROBADO);
                 if (!todosAprobados) {
-                        throw new BusinessException(
-                                        "No se puede completar el proyecto porque aún hay entregables pendientes o rechazados");
+                        throw new BusinessException("No se puede completar el proyecto porque aún hay entregables pendientes o rechazados");
                 }
 
+                // ✅ CAMBIO: Solo cambiar estado a COMPLETADO, NO emitir certificados aquí
                 proyecto.setEstado(WorkflowEstado.COMPLETADO);
                 proyecto.setFechaCompletado(LocalDateTime.now());
 
-                // ✅ ELIMINAR CHATS GRUPALES (EQUIPO + PROYECTO)
+                // ✅ ELIMINAR CHATS GRUPALES
                 try {
                         chatGrupalService.eliminarChatsGrupalesDeProyecto(proyectoId);
                         log.info("Chats grupales eliminados para proyecto completado ID: {}", proyectoId);
@@ -1002,60 +1005,36 @@ public class ProyectoService {
                         log.error("Error al eliminar chats grupales del proyecto {}: {}", proyectoId, e.getMessage());
                 }
 
-                // ✅ ELIMINAR CONVERSACIONES DIRECTAS (chats individuales)
                 try {
                         mensajeService.eliminarConversacionesDirectasDeProyecto(proyectoId);
                         log.info("Conversaciones directas eliminadas para proyecto completado ID: {}", proyectoId);
                 } catch (Exception e) {
-                        log.error("Error al eliminar conversaciones directas del proyecto {}: {}", proyectoId,
-                                        e.getMessage());
+                        log.error("Error al eliminar conversaciones directas del proyecto {}: {}", proyectoId, e.getMessage());
                 }
 
                 var guardado = proyectoRepository.save(proyecto);
 
-                // Notificar a estudiantes confirmados
+                // ✅ NOTIFICAR a la MYPE que el proyecto está listo para emitir certificados
+                // ✅ NOTIFICAR a los estudiantes que el proyecto fue completado
                 postulacionRepository.findByProyectoIdAndEstadoWithDetails(proyectoId, EstadoPostulacion.CONFIRMADO)
-                                .forEach(p -> {
-                                        notificacionService.crearNotificacion(
-                                                        p.getEstudiante().getUsuario(),
-                                                        "Proyecto completado",
-                                                        "El proyecto \"" + proyecto.getTitulo()
-                                                                        + "\" ha finalizado exitosamente. Tu certificado digital ha sido emitido.",
-                                                        TipoNotificacion.PROYECTO,
-                                                        "/certificados");
-                                        try {
-                                                emailService.enviarCorreoNotificacion(
-                                                                p.getEstudiante().getUsuario().getEmail(),
-                                                                "¡Proyecto completado! Tu certificado está disponible",
-                                                                "El proyecto \"" + proyecto.getTitulo()
-                                                                                + "\" ha finalizado exitosamente. "
-                                                                                + "Tu certificado digital ha sido emitido y está disponible en la plataforma.\n\n"
-                                                                                + "Inicia sesión para verlo: http://localhost:5173/login",
-                                                                p.getEstudiante().getUsuario().getNombre());
-                                        } catch (Exception e) {
-                                                log.error("Error al enviar email a estudiante sobre proyecto completado: {}",
-                                                                e.getMessage());
-                                        }
-                                });
-                // Notificar a la MYPE
-                notificacionService.crearNotificacion(
-                                proyecto.getMype().getUsuario(),
-                                "Proyecto completado",
-                                "El proyecto \"" + proyecto.getTitulo()
-                                                + "\" ha sido completado. Los certificados de los estudiantes han sido emitidos.",
-                                TipoNotificacion.PROYECTO,
-                                "/dashboard/mype/certificados");
-                try {
-                        emailService.enviarCorreoNotificacion(
-                                        proyecto.getMype().getUsuario().getEmail(),
+                        .forEach(p -> {
+                                notificacionService.crearNotificacion(
+                                        p.getEstudiante().getUsuario(),
                                         "Proyecto completado",
-                                        "El proyecto \"" + proyecto.getTitulo() + "\" ha sido completado exitosamente. "
-                                                        + "Los certificados digitales de los estudiantes participantes han sido emitidos.\n\n"
-                                                        + "Inicia sesión para ver el detalle: http://localhost:5173/login",
-                                        proyecto.getMype().getUsuario().getNombre());
-                } catch (Exception e) {
-                        log.error("Error al enviar email a la MYPE sobre proyecto completado: {}", e.getMessage());
-                }
+                                        "El proyecto \"" + proyecto.getTitulo() + "\" ha sido completado exitosamente. La MYPE emitirá tu certificado próximamente.",
+                                        TipoNotificacion.PROYECTO,
+                                        "/certificados"
+                                );
+                        });
+
+                notificacionService.crearNotificacion(
+                        proyecto.getMype().getUsuario(),
+                        "Proyecto completado - Listo para emitir certificados",
+                        "El proyecto \"" + proyecto.getTitulo() + "\" ha sido completado. Ahora puedes emitir los certificados para los estudiantes participantes.",
+                        TipoNotificacion.PROYECTO,
+                        "/dashboard/mype/certificados"
+                );
+
                 return toResponse(guardado);
         }
 
@@ -1525,5 +1504,42 @@ public class ProyectoService {
                 usuarioRepository.save(usuario);
 
                 return url;
+        }
+
+        @Transactional(readOnly = true)
+        public boolean puedeEmitirCertificado(Long proyectoId, String emailMype) {
+                var usuario = usuarioRepository.findByEmailWithRole(emailMype)
+                        .orElseThrow(() -> new BusinessException("Usuario no encontrado"));
+                var mype = mypeRepository.findByUsuarioId(usuario.getId())
+                        .orElseThrow(() -> new BusinessException("Perfil MYPE no encontrado"));
+                var proyecto = proyectoRepository.findById(proyectoId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Proyecto", proyectoId));
+
+                if (!proyecto.getMype().getId().equals(mype.getId())) {
+                        return false;
+                }
+
+                // Verificar que el proyecto esté en estado COMPLETADO
+                if (proyecto.getEstado() != WorkflowEstado.COMPLETADO) {
+                        return false;
+                }
+
+                // Verificar que el proyecto tenga estudiantes confirmados
+                List<Postulacion> confirmados = postulacionRepository
+                        .findByProyectoIdAndEstadoWithDetails(proyectoId, EstadoPostulacion.CONFIRMADO);
+
+                if (confirmados.isEmpty()) {
+                        return false;
+                }
+
+                // Verificar que los estudiantes no tengan ya un certificado
+                for (Postulacion p : confirmados) {
+                        if (certificadoRepository.existsByProyectoIdAndEstudianteId(proyectoId, p.getEstudiante().getId())) {
+                                // Si ya tiene certificado, no debería emitir otro
+                                return false;
+                        }
+                }
+
+                return true;
         }
 }

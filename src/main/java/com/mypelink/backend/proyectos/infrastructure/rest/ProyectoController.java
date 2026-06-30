@@ -32,6 +32,14 @@ public class ProyectoController {
         return ResponseEntity.ok(proyectoService.listarPublicos(pageable));
     }
 
+    @GetMapping("/{id}/puede-emitir-certificado")
+    @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
+    public ResponseEntity<Boolean> puedeEmitirCertificado(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(proyectoService.puedeEmitirCertificado(id, userDetails.getUsername()));
+    }
+
     @GetMapping("/mis-proyectos")
     @PreAuthorize("hasAnyAuthority('ROLE_MYPE', 'MYPE')")
     public ResponseEntity<List<ProyectoResponse>> misProyectos(

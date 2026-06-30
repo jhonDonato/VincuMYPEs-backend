@@ -1,5 +1,7 @@
 package com.mypelink.backend.certificaciones.application.service;
 
+import com.mypelink.backend.calificaciones.application.dto.CrearCalificacionRequest;
+import com.mypelink.backend.calificaciones.application.service.CalificacionService;
 import com.mypelink.backend.certificaciones.application.dto.*;
 import com.mypelink.backend.certificaciones.domain.model.Certificado;
 import com.mypelink.backend.certificaciones.domain.repository.CertificadoRepository;
@@ -39,6 +41,7 @@ public class CertificadoService {
     private final EmailService emailService;
     private final PdfGeneratorService pdfGeneratorService;
     private final S3Service s3Service;
+    private final CalificacionService calificacionService;
 
     @Transactional
     public List<CertificadoResponse> emitirCertificados(String emailMype, EmitirCertificadoRequest request) {
@@ -170,7 +173,7 @@ public class CertificadoService {
     }
 
     @Transactional
-    public void enviarCertificado(Long certificadoId, String emailMype, String pdfBase64) {
+    public void enviarCertificado(Long certificadoId, String emailMype, String pdfBase64, Integer calificacion) {
         Certificado certificado = certificadoRepository.findById(certificadoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Certificado no encontrado", certificadoId));
 
@@ -182,12 +185,34 @@ public class CertificadoService {
             throw new BusinessException("Este certificado ya ha sido enviado al estudiante");
         }
 
+        // Validar que la calificación esté presente y sea válida
+        if (calificacion == null || calificacion < 1 || calificacion > 5) {
+            throw new BusinessException("La calificación debe estar entre 1 y 5", HttpStatus.BAD_REQUEST);
+        }
+
+        // Guardar la calificación (MYPE calificando ESTUDIANTE)
+        CrearCalificacionRequest calificacionRequest = new CrearCalificacionRequest(
+                certificado.getProyecto().getId(),
+                certificado.getEstudiante().getUsuario().getId(),
+                calificacion
+        );
+        
+        try {
+            calificacionService.crear(calificacionRequest, emailMype);
+            log.info("✅ Calificación guardada - Certificado: {}, Calificación: {}", certificadoId, calificacion);
+        } catch (Exception e) {
+            log.error("❌ Error al guardar calificación para certificado {}: {}", certificadoId, e.getMessage());
+            throw new BusinessException("Error al guardar la calificación: " + e.getMessage(), HttpStatus.BAD_REQUEST);
+        }
+
+        // Actualizar el certificado
         if (pdfBase64 != null && !pdfBase64.isBlank()) {
             certificado.setPdfBase64(pdfBase64);
         }
         certificado.setFechaEnvio(LocalDateTime.now());
         certificadoRepository.save(certificado);
 
+        // Enviar email
         emailService.enviarCertificado(
                 certificado.getEstudiante().getUsuario().getEmail(),
                 certificado.getEstudiante().getUsuario().getNombre(),
@@ -196,6 +221,8 @@ public class CertificadoService {
                 certificado.getCodigo(),
                 certificado.getUrlCertificado()
         );
+        
+        log.info("✅ Certificado enviado - ID: {}, Estudiante: {}", certificadoId, certificado.getEstudiante().getUsuario().getEmail());
     }
 
     @Transactional
