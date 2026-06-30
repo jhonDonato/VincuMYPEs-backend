@@ -183,7 +183,11 @@ public class S3Service {
             throw new BusinessException("El CV no puede superar los 5MB.");
         }
 
-        String fileName = "cvs/" + UUID.randomUUID() + "_" + file.getOriginalFilename().replace(" ", "_");
+        String originalName = file.getOriginalFilename();
+        String safeName = originalName != null
+                ? originalName.replaceAll("[^a-zA-Z0-9._-]", "_")
+                : "archivo";
+        String fileName = "cvs/" + UUID.randomUUID() + "_" + safeName;
 
         try {
             PutObjectRequest putOb = PutObjectRequest.builder()
