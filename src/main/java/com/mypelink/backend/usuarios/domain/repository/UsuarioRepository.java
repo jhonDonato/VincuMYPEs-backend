@@ -20,6 +20,5 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
     @Query("SELECT COUNT(u) FROM Usuario u WHERE u.rol.nombre = :rolNombre")
     long countByRolNombre(@Param("rolNombre") String rolNombre);
     boolean existsByTelefono(String telefono);
-    // UsuarioRepository.java
     Page<Usuario> findByRolNombre(String rolNombre, Pageable pageable);
 }
